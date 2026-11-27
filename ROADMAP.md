@@ -114,7 +114,16 @@ depends on its code and is deployed in the same server, so its business logic ca
 - ⬜ Build: A compiles against B's jar (`compileOnly`, not packaged into A); B publishes its model
   (`META-INF/datastack/<model>-model.json`) so A's generator can resolve `dcim:Person`
 - ⬜ Co-deployment: A only runs in a server where B is deployed (dependency check at deploy and start-up)
-- ⬜ Dependencies form a graph without cycles (A → B allowed, then B → A refused); B's version range checked
+- ⬜ **Direction:** references go one way. If A references B, B never references A (no cycles, checked by the
+  generator and at deploy; B's version range checked). Models form layers, e.g. a core model (persons,
+  organisations) at the bottom and domain models above it. Consequences:
+  - the reference and its foreign key live in A's table; an M-to-N intersection between A and B lives in A
+  - B's entities get no inverse side (`Person.wizards` does not exist); A provides the navigation instead:
+    a finder in A's DAO, and views in A rooted at B's objects (e.g. a `PersonWizards` view in hogwarts)
+  - B's views never show A's data
+  - when B changes, A reacts: A's `@Rule` classes may listen to B's entities (e.g. before a Person is deleted),
+    B never calls A. The foreign key's `onDelete` covers the simple cases; A's constraint mappings give the
+    error code when B's delete is refused because of A
 - ⬜ B's public surface ❓: which of B's classes A may use (services and DAOs, or entities too), so B can
   change its internals without breaking A
 - ⬜ JPA: A's relation maps straight to B's entity class (`<many-to-one target-entity="...dcim.entity.Person">`)
