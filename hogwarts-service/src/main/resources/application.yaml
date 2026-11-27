@@ -1,0 +1,30 @@
+# Created once by datastack-generator. This file is yours: the generator never overwrites it.
+spring:
+  application:
+    name: hogwarts-service
+
+  # Used when PostgreSQL is not started through Docker Compose.
+  datasource:
+    url: ${HOGWARTS_DB_URL:jdbc:postgresql://localhost:5432/hogwarts}
+    username: ${HOGWARTS_DB_USER:hogwarts}
+    password: ${HOGWARTS_DB_PASSWORD:hogwarts}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Liquibase owns the schema
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  graphql:
+    graphiql:
+      enabled: true
+
+  docker:
+    compose:
+      lifecycle-management: start-only
+
+# ---- custom settings ----
+demo:
+  seed: true

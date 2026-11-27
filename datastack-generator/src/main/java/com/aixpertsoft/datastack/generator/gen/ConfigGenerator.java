@@ -51,16 +51,21 @@ public final class ConfigGenerator {
                 }
             }
         }
-        for (RelationDef r : index.model().relations()) {
-            if (r.isManyToMany() && r.intersection() != null) {
-                mappings.add("new ConstraintMapping(\"uq_" + r.intersection().table() + "\", HttpStatus.CONFLICT, \""
-                        + ServiceGenerator.duplicateLinkCode(index.model().id(), r) + "\",\n                        \"This "
-                        + lower(r.to().object()) + " is already linked to this " + lower(r.from().object()) + "\")");
-                if (!r.intersection().uniqueWhere().isEmpty()) {
-                    mappings.add("new ConstraintMapping(\"ex_" + r.intersection().table() + "\", HttpStatus.CONFLICT, \""
-                            + index.model().id() + "." + lower(r.id()) + "Constraint\",\n                        \"Relation "
-                            + r.id() + ": " + r.intersection().uniqueWhere().getFirst().where() + " is allowed only once\")");
-                }
+        ChangelogGenerator changelog = new ChangelogGenerator(index, out);
+        for (Entity e : index.entities()) {
+            if (!e.isIntersection()) continue;
+            RelationDef r = e.intersectionOf();
+            String table = r.intersection().table();
+            mappings.add("new ConstraintMapping(\"uq_" + table + "\", HttpStatus.CONFLICT, \""
+                    + ServiceGenerator.duplicateLinkCode(index.model().id(), r) + "\",\n                        \"This "
+                    + lower(r.to().object()) + " is already linked to this " + lower(r.from().object()) + "\")");
+            for (RelationDef.UniqueWhere u : r.intersection().uniqueWhere()) {
+                String constraint = ChangelogGenerator.exclusionName(table, changelog.exclusionColumns(e, u));
+                String code = index.model().id() + "." + (u.code() != null ? u.code() : lower(r.id()) + "Constraint");
+                String message = u.message() != null ? u.message()
+                        : "Relation " + r.id() + ": " + u.where() + " is allowed only once";
+                mappings.add("new ConstraintMapping(\"" + constraint + "\", HttpStatus.CONFLICT, \"" + code
+                        + "\",\n                        \"" + message.replace("\"", "\\\"") + "\")");
             }
         }
         String name = upper(index.model().id()) + "Constraints";

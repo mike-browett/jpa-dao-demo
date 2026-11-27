@@ -7,6 +7,7 @@ import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -50,6 +51,15 @@ public class ProblemHandler {
                 .reduce((a, b) -> a + "; " + b)
                 .orElse("Invalid request");
         return problem(HttpStatus.BAD_REQUEST, "validation", message);
+    }
+
+    /** Malformed JSON or a value of the wrong type, e.g. an unknown enum constant. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail unreadable(HttpMessageNotReadableException e) {
+        Throwable cause = e.getMostSpecificCause();
+        String detail = cause.getMessage() == null ? "" : cause.getMessage().lines().findFirst().orElse("");
+        return problem(HttpStatus.BAD_REQUEST, "unreadable",
+                detail.isBlank() ? "The request body could not be read" : detail);
     }
 
     /**

@@ -152,7 +152,7 @@ public final class RestGenerator {
         s.line();
         s.line("    @PatchMapping(\"" + base + "/{" + toId + "}\")");
         s.line("    public " + linkDto + " update" + item + "(@PathVariable UUID id, @PathVariable UUID " + toId + ",");
-        s.line("            @RequestBody " + requests + ".Update request) {");
+        s.line("            @Valid @RequestBody " + requests + ".Update request) {");
         s.line("        return service.update" + item + "(id, " + toId + ", request);");
         s.line("    }");
         s.line();

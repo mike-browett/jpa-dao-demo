@@ -1,0 +1,10 @@
+# PostgreSQL for hogwarts-service. Spring Boot starts it automatically on bootRun.
+services:
+  postgres:
+    image: 'postgres:16'
+    environment:
+      POSTGRES_DB: hogwarts
+      POSTGRES_USER: hogwarts
+      POSTGRES_PASSWORD: hogwarts
+    ports:
+      - '15434:5432'   # 15434, so it can run next to dcim-demo (15432) and dcim-service (15433)

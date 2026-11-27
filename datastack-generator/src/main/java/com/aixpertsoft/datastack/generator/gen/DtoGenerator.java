@@ -160,8 +160,8 @@ public final class DtoGenerator {
         List<String> updateComponents = new ArrayList<>();
         for (AttributeDef a : link.def().attributes()) {
             String t = s.type(boxed(index.javaType(link, a)));
-            linkComponents.add(t + " " + a.name());
-            updateComponents.add(t + " " + a.name());
+            linkComponents.add(validation(s, a, true) + t + " " + a.name());
+            updateComponents.add(validation(s, a, false) + t + " " + a.name());
         }
         String name = r.id() + "Requests";
         s.line("/** Request bodies for relation " + r.id() + " (" + r.from().object() + "." + r.from().name() + "). */");

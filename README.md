@@ -24,6 +24,7 @@ The code is split into four Gradle modules:
 | `dcim-demo` | The Rack / Component / Person microservice, **written by hand** (Phase 1) |
 | `datastack-generator` | The code generator: validates a `model.json` and generates a microservice from it |
 | `dcim-service` | The same microservice, **generated** from [`dcim-service/model/model.json`](dcim-service/model/model.json) plus hand-written rules. See [its README](dcim-service/README.md) |
+| `hogwarts-service` | A second generated microservice with a friendlier model: Harry Potter wizards, houses and spells, a many-to-many with attributes (`level` 1–9, `favourite`) and demo data from the books. See [its README](hogwarts-service/README.md) |
 
 How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -131,6 +132,9 @@ nobody changed the object in the meantime.
   created once and never overwritten.
 - **`GeneratedRackApiIntegrationTest`** (in `dcim-service`) runs the same API checks as the demo against the
   generated service. Without Docker, point it at an empty database with `DCIM_TEST_DB_URL`.
+- **`HogwartsApiIntegrationTest`** (in `hogwarts-service`) loads the Harry Potter demo data and checks views,
+  inheritance, the favourite swap, the unforgivable-curse rule and error codes. Without Docker, use
+  `HOGWARTS_TEST_DB_URL`.
 - **Rule tests** (`NoContainmentCycleTest`, `SinglePrimaryAdministratorTest`) are plain unit tests with
   no Spring and no database. They take milliseconds.
 - **`RackApiIntegrationTest`** goes through the real REST API against a real PostgreSQL. It starts its own
@@ -254,6 +258,11 @@ dcim-service/                    the Rack microservice, generated
   src/main/java/...              owned subclasses (created once), @Rule classes, custom code
   build/generated/datastack/     generated code and resources (not committed)
 
+hogwarts-service/                Wizards and Spells, generated (same layout as dcim-service)
+  model/model.json               House, Wizard, Professor, Spell, WizardSpell (level, favourite), 3 views
+  compose.yaml                   PostgreSQL for hogwarts-service (port 15434)
+  requests.http                  walk-through of its API
+
 test/postman/                    Postman collection testing the running API
 requests.http                    walk-through of the API
 ```
@@ -265,6 +274,7 @@ requests.http                    walk-through of the API
 ```bash
 ./gradlew :dcim-service:generateCode      # validate the model, regenerate build/generated/datastack
 ./gradlew :dcim-service:bootRun           # generate, compile and run (PostgreSQL on port 15433)
+./gradlew :hogwarts-service:bootRun       # the Harry Potter model (PostgreSQL on port 15434)
 ```
 
 To only check a model:

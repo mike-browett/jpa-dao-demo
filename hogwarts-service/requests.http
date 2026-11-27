@@ -1,0 +1,113 @@
+### hogwarts-service: example requests (needs the demo data, demo.seed=true)
+### Open in VS Code with the "REST Client" extension (or IntelliJ) and click "Send Request".
+### Run them top to bottom: later requests reuse ids from earlier responses.
+
+@api = http://localhost:8080/api
+
+### 1. Wizard overview: house, wand, spells (favourite first) with spell details
+# @name harry
+GET {{api}}/views/wizard-overview?name=Harry%20Potter
+
+### 2. Spell book: the many-to-many from the other side (spell -> casters -> wizard -> house)
+# @name patronus
+GET {{api}}/views/spell-book?name=Expecto%25
+
+### 3. Every spell whose name ends in "Curse", and who casts it ("%" is encoded as %25)
+GET {{api}}/views/spell-book?name=%25curse
+
+### 4. House roster: students and professors (same table, discriminator "type")
+GET {{api}}/views/house-roster
+
+### 5. The same data through GraphQL, choosing the fields
+POST http://localhost:8080/graphql
+Content-Type: application/json
+
+{ "query": "{ wizardOverview(nameLike: \"%Weasley\") { items { name patronus house { name } spells { level favourite spell { incantation } } } } }" }
+
+### 6. Harry's favourite becomes the Patronus Charm: the SingleFavouriteSpell rule demotes Expelliarmus
+PATCH {{api}}/wizards/{{harry.response.body.$.items[0].id}}/spells/{{patronus.response.body.$.items[0].id}}
+Content-Type: application/json
+
+{ "favourite": true }
+
+### 7. Check: only one favourite left
+GET {{api}}/wizards/{{harry.response.body.$.items[0].id}}/spells
+
+### 8. A new spell
+# @name tickling
+POST {{api}}/spells
+Content-Type: application/json
+
+{ "name": "Tickling Charm", "incantation": "Rictusempra", "category": "CHARM", "difficulty": 2 }
+
+### 9. A new professor (Wizard subtype: needs a subject), with a wand in the JSON attribute
+# @name lockhart
+POST {{api}}/professors
+Content-Type: application/json
+
+{ "name": "Gilderoy Lockhart", "yearOfBirth": 1964, "subject": "Defence Against the Dark Arts",
+  "wand": { "wood": "Cherry", "core": "Dragon heartstring", "lengthInches": 9 } }
+
+### 10. Lockhart learns the Tickling Charm, badly
+POST {{api}}/wizards/{{lockhart.response.body.$.id}}/spells
+Content-Type: application/json
+
+{ "spellId": "{{tickling.response.body.$.id}}", "level": 1, "favourite": true }
+
+### 11. Level up (partial update of the link attributes)
+PATCH {{api}}/wizards/{{lockhart.response.body.$.id}}/spells/{{tickling.response.body.$.id}}
+Content-Type: application/json
+
+{ "level": 2 }
+
+### ---- Errors ----
+
+### 12. Unforgivable Curse below level 7 -> 422 hogwarts.unforgivableTooWeak (custom rule)
+# @name crucio
+GET {{api}}/views/spell-book?name=Crucio
+
+###
+POST {{api}}/wizards/{{lockhart.response.body.$.id}}/spells
+Content-Type: application/json
+
+{ "spellId": "{{crucio.response.body.$.items[0].id}}", "level": 3 }
+
+### 13. Level outside 1-9 -> 400 validation (from the model's min/max)
+POST {{api}}/wizards/{{lockhart.response.body.$.id}}/spells
+Content-Type: application/json
+
+{ "spellId": "{{crucio.response.body.$.items[0].id}}", "level": 10 }
+
+### 14. Same spell twice -> 409 hogwarts.duplicateSpell
+POST {{api}}/wizards/{{lockhart.response.body.$.id}}/spells
+Content-Type: application/json
+
+{ "spellId": "{{tickling.response.body.$.id}}", "level": 5 }
+
+### 15. Unknown enum value -> 400 unreadable, lists the accepted categories
+POST {{api}}/spells
+Content-Type: application/json
+
+{ "name": "Prank Spell", "category": "PRANK" }
+
+### 16. Professor without a subject -> 400 validation
+POST {{api}}/professors
+Content-Type: application/json
+
+{ "name": "Quirinus Quirrell" }
+
+### 17. Duplicate name -> 409 duplicateName (unique constraint)
+POST {{api}}/wizards
+Content-Type: application/json
+
+{ "name": "Harry Potter" }
+
+### 18. Delete a house that has members -> 409 hogwarts.houseNotEmpty (onDelete: restrict)
+# @name houses
+GET {{api}}/houses
+
+###
+DELETE {{api}}/houses/{{houses.response.body.$.items[0].id}}
+
+### 19. Clean up: deleting Lockhart also deletes his spell links (cascade on the intersection)
+DELETE {{api}}/wizards/{{lockhart.response.body.$.id}}

@@ -102,25 +102,30 @@ public final class ViewGenerator {
 
     // ---- fields ----
 
-    private record Field(String name, String javaType, String graphqlType, String getter) {
+    /** A view field: its record component, GraphQL type and how to read it from entity variable "e". */
+    private record Field(String name, String javaType, String graphqlType, String value) {
     }
 
     private Field field(Entity e, String name, Src s) {
         switch (name) {
             case "id":
-                return new Field("id", s.type("java.util.UUID"), "ID!", "getId()");
+                return new Field("id", s.type("java.util.UUID"), "ID!", "e.getId()");
             case "version":
-                return new Field("version", "Long", "String!", "getVersion()");
+                return new Field("version", "Long", "String!", "e.getVersion()");
             case "type":
-                if (index.attribute(e, "type").isEmpty()) return new Field("type", "String", "String!", "getType()");
+                if (index.attribute(e, "type").isEmpty()) return new Field("type", "String", "String!", "e.getType()");
                 break;
             default:
                 break;
         }
-        AttributeDef a = index.attribute(e, name).orElseThrow();
+        AttributeDef a = index.attributeInHierarchy(e, name).orElseThrow();
         Entity owner = index.declaringEntity(index.root(e), a);
         String getter = ("boolean".equals(a.type()) ? "is" : "get") + upper(a.name()) + "()";
-        String bang = a.isRequired() ? "!" : "";
+        boolean onSubtype = index.attribute(e, name).isEmpty();
+        String value = onSubtype
+                ? "e instanceof " + s.type(index.pkg("entity") + "." + owner.name()) + " x ? x." + getter + " : null"
+                : "e." + getter;
+        String bang = a.isRequired() && !onSubtype ? "!" : "";
         String gql;
         if ("enum".equals(a.type())) {
             gql = index.enumType(owner, a);
@@ -131,8 +136,8 @@ public final class ViewGenerator {
         } else {
             gql = Types.graphql(a.type());
         }
-        String javaType = "boolean".equals(a.type()) ? "boolean" : s.type(index.javaType(owner, a));
-        return new Field(a.name(), javaType, gql + bang, getter);
+        String javaType = "boolean".equals(a.type()) && !onSubtype ? "boolean" : s.type(index.javaType(owner, a));
+        return new Field(a.name(), javaType, gql + bang, value);
     }
 
     // ---- records ----
@@ -231,7 +236,7 @@ public final class ViewGenerator {
             String entity = s.type(index.pkg("entity") + "." + n.entity().name());
             List<String> values = new ArrayList<>();
             for (String f : n.node().fields()) {
-                values.add("e." + field(n.entity(), f, s).getter());
+                values.add(field(n.entity(), f, s).value());
             }
             for (Node link : n.node().links()) {
                 if (link.isPathLink()) {
@@ -351,8 +356,8 @@ public final class ViewGenerator {
         Src scratch = new Src(pkg);
         for (String f : node.fields()) {
             d.append(indent).append(f);
-            if (index.attribute(e, f).map(a -> "object".equals(a.type())).orElse(false)) {
-                AttributeDef a = index.attribute(e, f).get();
+            if (index.attributeInHierarchy(e, f).map(a -> "object".equals(a.type())).orElse(false)) {
+                AttributeDef a = index.attributeInHierarchy(e, f).get();
                 d.append(" { ").append(String.join(" ", a.properties().stream().map(AttributeDef::name).toList())).append(" }");
             }
             d.append('\n');

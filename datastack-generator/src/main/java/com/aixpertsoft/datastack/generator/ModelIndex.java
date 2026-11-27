@@ -150,6 +150,14 @@ public final class ModelIndex {
         return allAttributes(e).stream().filter(a -> a.name().equals(name)).findFirst();
     }
 
+    /** An attribute of e or of one of its subtypes (e.g. Professor.subject seen from Wizard). */
+    public Optional<AttributeDef> attributeInHierarchy(Entity e, String name) {
+        return attribute(e, name).or(() -> hierarchyBelow(e).stream()
+                .flatMap(x -> x.def().attributes().stream())
+                .filter(a -> a.name().equals(name))
+                .findFirst());
+    }
+
     /** The subtype that declares an attribute (for attributes that only exist on a subtype). */
     public Entity declaringEntity(Entity root, AttributeDef a) {
         return hierarchyBelow(root).stream().filter(x -> x.def().attributes().contains(a)).findFirst().orElse(root);
@@ -159,8 +167,10 @@ public final class ModelIndex {
         return a.column() != null ? a.column() : Names.snake(a.name());
     }
 
+    /** Spell.category -> SpellCategory; Person.personType -> PersonType (already starts with the object name). */
     public String enumType(Entity owner, AttributeDef a) {
-        return Names.upper(a.name());
+        String root = root(owner).name();
+        return a.name().toLowerCase().startsWith(root.toLowerCase()) ? Names.upper(a.name()) : root + Names.upper(a.name());
     }
 
     /** Name of the record generated for a JSON object attribute, e.g. Person.contact -> PersonContact. */

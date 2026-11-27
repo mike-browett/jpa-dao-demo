@@ -1,0 +1,160 @@
+{
+  "id": "hogwarts",
+  "version": "0.1.0",
+  "javaPackage": "com.aixpertsoft.hogwarts",
+  "restBasePath": "/api",
+  "database": { "changelog": true },
+
+  "objects": [
+    {
+      "id": "House",
+      "table": "house",
+      "attributes": [
+        { "name": "name",    "type": "string", "length": 40, "required": true, "unique": true },
+        { "name": "founder", "type": "string", "length": 80 },
+        { "name": "animal",  "type": "string", "length": 40 },
+        { "name": "colours", "type": "string", "length": 60 },
+        { "name": "ghost",   "type": "string", "length": 80 }
+      ],
+      "rest": { "path": "houses" }
+    },
+    {
+      "id": "Wizard",
+      "table": "wizard",
+      "inheritance": { "strategy": "singleTable", "discriminator": "type", "value": "WIZARD" },
+      "attributes": [
+        { "name": "name",        "type": "string",  "length": 120, "required": true, "unique": true },
+        { "name": "yearOfBirth", "type": "integer", "min": 1000, "max": 2100 },
+        { "name": "patronus",    "type": "string",  "length": 60 },
+        { "name": "wand",        "storage": "json", "type": "object",
+          "properties": [
+            { "name": "wood",         "type": "string" },
+            { "name": "core",         "type": "string" },
+            { "name": "lengthInches", "type": "decimal" }
+          ] }
+      ],
+      "rest": { "path": "wizards" }
+    },
+    {
+      "id": "Professor",
+      "extends": "Wizard",
+      "discriminatorValue": "PROFESSOR",
+      "attributes": [
+        { "name": "subject", "type": "string", "length": 80, "required": true }
+      ],
+      "rest": { "path": "professors" }
+    },
+    {
+      "id": "Spell",
+      "table": "spell",
+      "attributes": [
+        { "name": "name",         "type": "string",  "length": 80, "required": true, "unique": true },
+        { "name": "incantation",  "type": "string",  "length": 80, "unique": true },
+        { "name": "category",     "type": "enum",    "values": ["CHARM", "JINX", "HEX", "CURSE", "HEALING"], "required": true },
+        { "name": "unforgivable", "type": "boolean", "required": true, "default": false },
+        { "name": "difficulty",   "type": "integer", "min": 1, "max": 5, "default": 1 }
+      ],
+      "rest": { "path": "spells" }
+    }
+  ],
+
+  "relations": [
+    {
+      "id": "HouseMembers",
+      "type": "oneToMany",
+      "from": { "object": "House",  "name": "members" },
+      "to":   { "object": "Wizard", "name": "house", "min": 0 },
+      "column": "house_id",
+      "onDelete": { "from": "restrict" },
+      "rest": { "path": "members" }
+    },
+    {
+      "id": "WizardSpell",
+      "type": "manyToMany",
+      "from": { "object": "Wizard", "name": "spells" },
+      "to":   { "object": "Spell",  "name": "casters" },
+      "intersection": {
+        "table": "wizard_spell",
+        "attributes": [
+          { "name": "level",     "type": "integer", "min": 1, "max": 9, "required": true },
+          { "name": "favourite", "type": "boolean", "required": true, "default": false }
+        ],
+        "unique": ["from", "to"],
+        "uniqueWhere": [ { "columns": ["from"], "where": "favourite = true",
+                           "code": "oneFavouriteSpell", "message": "A wizard can have only one favourite spell" } ]
+      },
+      "rest": { "path": "spells" }
+    }
+  ],
+
+  "views": [
+    {
+      "id": "WizardOverview",
+      "rest": { "path": "wizard-overview" },
+      "root": {
+        "object": "Wizard",
+        "query": "select w from Wizard w left join fetch w.house where lower(w.name) like lower(:nameLike) order by w.name",
+        "count": "select count(w) from Wizard w where lower(w.name) like lower(:nameLike)",
+        "parameters": [ { "name": "nameLike", "type": "string", "default": "%", "rest": "name" } ],
+        "fields": ["id", "type", "name", "subject", "yearOfBirth", "patronus", "wand"],
+        "links": [
+          { "name": "house", "object": "House", "path": "house", "fields": ["name"] },
+          {
+            "name": "spells",
+            "object": "WizardSpell",
+            "query": "select ws from WizardSpell ws join fetch ws.spell s where ws.wizard.id in :parentIds order by ws.favourite desc, ws.level desc, s.name",
+            "parentKey": "wizard.id",
+            "fields": ["level", "favourite"],
+            "links": [
+              { "name": "spell", "object": "Spell", "path": "spell",
+                "fields": ["name", "incantation", "category", "unforgivable"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SpellBook",
+      "rest": { "path": "spell-book" },
+      "root": {
+        "object": "Spell",
+        "query": "select s from Spell s where lower(s.name) like lower(:nameLike) or lower(s.incantation) like lower(:nameLike) order by s.name",
+        "count": "select count(s) from Spell s where lower(s.name) like lower(:nameLike) or lower(s.incantation) like lower(:nameLike)",
+        "parameters": [ { "name": "nameLike", "type": "string", "default": "%", "rest": "name" } ],
+        "fields": ["id", "name", "incantation", "category", "unforgivable", "difficulty"],
+        "links": [
+          {
+            "name": "casters",
+            "object": "WizardSpell",
+            "query": "select ws from WizardSpell ws join fetch ws.wizard w left join fetch w.house where ws.spell.id in :parentIds order by ws.level desc, w.name",
+            "parentKey": "spell.id",
+            "fields": ["level", "favourite"],
+            "links": [
+              { "name": "wizard", "object": "Wizard", "path": "wizard", "fields": ["name", "type"],
+                "links": [ { "name": "house", "object": "House", "path": "house", "fields": ["name"] } ] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "HouseRoster",
+      "rest": { "path": "house-roster" },
+      "root": {
+        "object": "House",
+        "query": "select h from House h order by h.name",
+        "count": "select count(h) from House h",
+        "fields": ["id", "name", "founder", "animal", "colours", "ghost"],
+        "links": [
+          {
+            "name": "members",
+            "object": "Wizard",
+            "query": "select w from Wizard w where w.house.id in :parentIds order by w.name",
+            "parentKey": "house.id",
+            "fields": ["name", "type", "subject", "patronus"]
+          }
+        ]
+      }
+    }
+  ]
+}

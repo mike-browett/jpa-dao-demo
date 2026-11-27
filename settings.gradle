@@ -11,3 +11,4 @@ include 'datastack-runtime'      // reusable framework: Dao, JpaDao, @Rule, Rule
 include 'dcim-demo'              // Spring Boot app: the Rack / Component / Person microservice
 include 'datastack-generator'    // model.json -> code
 include 'dcim-service'           // the Rack microservice, generated from dcim-service/model/model.json
+include 'hogwarts-service'       // Wizards and Spells, generated from hogwarts-service/model/model.json

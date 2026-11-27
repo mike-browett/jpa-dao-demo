@@ -102,6 +102,7 @@ The code is split into Gradle modules along the same line:
 | `dcim-demo` | `com.aixpertsoft.dcim`: the **microservice** built on the runtime, plus the Spring Boot application | `datastack-runtime`, Spring Boot starters |
 | `datastack-generator` | `com.aixpertsoft.datastack.generator`: validates `model.json` and generates a microservice from it. Plain Java, no Spring. | Jackson |
 | `dcim-service` | The same microservice as `dcim-demo`, generated from `model/model.json`; only rules and custom code are hand-written | `datastack-runtime`, Spring Boot starters; `datastack-generator` at build time |
+| `hogwarts-service` | A second generated microservice (Harry Potter wizards and spells) with no hand-written twin | same as `dcim-service` |
 
 Because they are separate modules, `dcim-demo` can only use what the runtime exposes, and the runtime cannot
 depend on any microservice by accident: the module boundary is checked by the compiler.
@@ -320,6 +321,25 @@ Design choices:
 
 Proof: `GeneratedRackApiIntegrationTest` is the demo's API test, unchanged, and passes against the generated
 service. The view costs the same 4 SQL statements.
+
+### A second model: `hogwarts-service`
+
+`dcim-service` proves the generator reproduces hand-written code. `hogwarts-service` proves it works on a model
+nobody wrote by hand first: House → Wizard (one-to-many, restrict), `Professor extends Wizard`, and
+**Wizard ↔ Spell many-to-many with attributes** on the intersection (`level` 1–9 required, `favourite` at most
+once per wizard). The hand-written part is two rules, one DAO query and the demo data.
+
+Building it surfaced a few generator and runtime gaps, now fixed for every model:
+
+| Gap | Fix |
+| --- | --- |
+| The link and update-link requests of a many-to-many had no validation | `@Min`/`@Max`/`@NotNull` from the intersection attributes, `@Valid` on the endpoint |
+| Enum names: `Spell.category` became a bare `Category` | `<Object><Attribute>` (`SpellCategory`), unless the attribute already starts with the object name (`PersonType`) |
+| A view on a supertype could not show subtype attributes (`Professor.subject` in `WizardOverview`) | Allowed; resolved with `instanceof`, nullable in GraphQL |
+| The `uniqueWhere` constraint gave a generic code (`dcim.rackAdministratorConstraint`) | Optional `code` and `message` on `uniqueWhere` (`hogwarts.oneFavouriteSpell`); mapping uses the exact constraint name |
+| A malformed body or unknown enum value returned Spring's default 400 without a `code` | `ProblemHandler` returns `400 unreadable` with the first line of the parser's message |
+
+Each view costs 3 selects per request whatever the row count (root, count, one batched query per query link).
 
 ## 10. Known simplifications (Phase 1 demo)
 

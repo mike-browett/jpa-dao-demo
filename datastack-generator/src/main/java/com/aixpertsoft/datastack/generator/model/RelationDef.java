@@ -55,9 +55,12 @@ public record RelationDef(String id,
         }
     }
 
-    /** "columns": from / to / attribute names; "where": "<booleanAttribute> = true". */
+    /**
+     * "columns": from / to / attribute names; "where": "<booleanAttribute> = true".
+     * "code" / "message": optional error clients see when it is violated (code is prefixed with the model id).
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record UniqueWhere(List<String> columns, String where) {
+    public record UniqueWhere(List<String> columns, String where, String code, String message) {
     }
 
     /** REST sub-resource below the "from" object, e.g. /racks/{id}/children. */

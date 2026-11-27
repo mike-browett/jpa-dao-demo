@@ -137,11 +137,20 @@ public final class ChangelogGenerator {
         String[] where = u.where().split("=");
         String flag = column(link, where[0].trim());
         String condition = where[1].trim().equals("true") ? flag : "NOT " + flag;
-        String name = "ex_" + table + "_" + String.join("_", cols);
+        String name = exclusionName(table, cols);
         return "-- at most one row per (" + String.join(", ", cols) + ") where " + u.where() + "; checked at commit\n"
                 + "ALTER TABLE " + table + "\n  ADD CONSTRAINT " + name + "\n  EXCLUDE USING btree ("
                 + String.join(", ", cols.stream().map(c -> c + " WITH =").toList()) + ") WHERE (" + condition + ")\n"
                 + "  DEFERRABLE INITIALLY DEFERRED;\n";
+    }
+
+    static String exclusionName(String table, List<String> columns) {
+        return "ex_" + table + "_" + String.join("_", columns);
+    }
+
+    /** Column names of a uniqueWhere, as used in its constraint name. */
+    List<String> exclusionColumns(Entity link, RelationDef.UniqueWhere u) {
+        return u.columns().stream().map(c -> column(link, c)).toList();
     }
 
     private static String fk(String table, String column, String target, String onDelete) {

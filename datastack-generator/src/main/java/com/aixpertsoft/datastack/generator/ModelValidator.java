@@ -184,7 +184,7 @@ public class ModelValidator {
         for (String field : node.fields()) {
             boolean builtIn = field.equals("id") || field.equals("version")
                     || (field.equals("type") && index.hasDiscriminator(entity));
-            if (!builtIn && index.attribute(entity, field).isEmpty()) {
+            if (!builtIn && index.attributeInHierarchy(entity, field).isEmpty()) {
                 problems.add(where + ": " + node.object() + " has no attribute " + field);
             }
         }
