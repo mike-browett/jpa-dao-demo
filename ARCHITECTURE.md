@@ -94,9 +94,16 @@ flowchart TB
 | Persistence | `dcim.entity` | JPA mapping of tables, relations, JSON attributes | — |
 | Database | `db/changelog/phase1.sql` | Tables, keys, constraints; Liquibase applies it at start-up | — |
 
-`com.aixpertsoft.datastack` is the **framework**: it knows nothing about racks. `com.aixpertsoft.dcim` is
-the **microservice** built on it. That split is the future boundary between the shared runtime library and
-generated or hand-written microservice code.
+The code is split into Gradle modules along the same line:
+
+| Module | Contents | Depends on |
+| --- | --- | --- |
+| `datastack-runtime` | `com.aixpertsoft.datastack`: the **framework** (`Dao`, `JpaDao`, `@Rule`, `RuleDispatcher`, `ProblemHandler`). Knows nothing about racks. A plain library, no Spring Boot. | JPA API, Spring context / web / orm |
+| `dcim-demo` | `com.aixpertsoft.dcim`: the **microservice** built on the runtime, plus the Spring Boot application | `datastack-runtime`, Spring Boot starters |
+| `datastack-generator` | `com.aixpertsoft.datastack.generator`: loads and validates `model.json`; will generate the code that is hand-written in `dcim-demo` today. Plain Java, no Spring. | Jackson |
+
+Because they are separate modules, `dcim-demo` can only use what the runtime exposes, and the runtime cannot
+depend on any microservice by accident: the module boundary is checked by the compiler.
 
 ---
 
@@ -255,7 +262,8 @@ Design choices:
 | Entities, DAOs, DTOs, controllers, GraphQL schema | Generated from `model.json` (generation gap: regenerated `…Base` classes plus developer-owned subclasses) |
 | `phase1.sql` | Generated Liquibase changelog per model version |
 | `@Rule` classes | Stay hand-written, unchanged |
-| `datastack` package | Becomes the shared runtime library (`datastack-runtime.jar`) |
+| `datastack-runtime` module | Published as the shared runtime library used by every microservice |
+| `datastack-generator` module (validates `model.json`) | Generates the code above; wrapped in a Gradle plugin (`generateCode`) |
 | `RackViewService` | Generated resolvers on the data-source contract; pluggable providers |
 | `ViewController` | Generic: one endpoint per view declared in the model |
 | Spring MVC on Spring Boot | Thin web adapter; a JAX-RS adapter for WildFly next to it |

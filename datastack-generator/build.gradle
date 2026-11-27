@@ -1,0 +1,22 @@
+// The code generator. Plain Java, no Spring: reads a microservice project's model.json.
+// Phase 1: load and validate. Phase 2: generate entities, DAOs, schema, REST from it.
+plugins {
+    id 'java-library'
+    id 'application'
+}
+
+description = 'Data stack generator: model.json -> validated model (later: generated code)'
+
+dependencies {
+    implementation platform(libs.spring.boot.bom)   // only for consistent library versions
+    implementation 'tools.jackson.core:jackson-databind'
+}
+
+application {
+    mainClass = 'com.aixpertsoft.datastack.generator.Main'
+}
+
+// ./gradlew :datastack-generator:run  -> validates the sample model used by the tests
+tasks.named('run') {
+    args = [file('src/test/resources/dcim/model.json').absolutePath]
+}

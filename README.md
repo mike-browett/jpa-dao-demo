@@ -16,6 +16,14 @@ be read, debugged and judged on its own:
 | Service | Transactional use cases |
 | REST | CRUD for persons, components and racks, plus relationship endpoints |
 
+The code is split into three Gradle modules:
+
+| Module | What it is |
+| --- | --- |
+| `datastack-runtime` | The reusable framework: DAO base class, `@Rule` and the rule dispatcher, REST error handling |
+| `dcim-demo` | The Spring Boot demo: the Rack / Component / Person microservice built on the runtime |
+| `datastack-generator` | The future code generator. Today it reads a `model.json` and validates it |
+
 How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
@@ -36,9 +44,10 @@ You do **not** need to install Gradle: the project comes with the Gradle wrapper
 ./gradlew bootRun          # Windows: gradlew.bat bootRun
 ```
 
-The first run downloads Gradle and the dependencies, so give it a few minutes. Then:
+This runs the `dcim-demo` module (same as `./gradlew :dcim-demo:bootRun`). The first run downloads Gradle and
+the dependencies, so give it a few minutes. Then:
 
-1. Spring Boot starts PostgreSQL in Docker from `compose.yaml` and connects to it.
+1. Spring Boot starts PostgreSQL in Docker from `dcim-demo/compose.yaml` and connects to it.
 2. Liquibase creates the tables.
 3. Demo data is added: 3 racks, 5 components, 3 persons.
 
@@ -113,9 +122,12 @@ nobody changed the object in the meantime.
 ## Run the tests
 
 ```bash
-./gradlew test
+./gradlew test                          # all modules
+./gradlew :dcim-demo:test               # one module
 ```
 
+- **Generator tests** (`ModelValidatorTest`) load the sample `dcim` model and check that broken models are
+  reported.
 - **Rule tests** (`NoContainmentCycleTest`, `SinglePrimaryAdministratorTest`) are plain unit tests with
   no Spring and no database. They take milliseconds.
 - **`RackApiIntegrationTest`** goes through the real REST API against a real PostgreSQL. It starts its own
@@ -156,7 +168,7 @@ Change it with the environment variables `PHASE1_DB_URL`, `PHASE1_DB_USER` and `
 
 ## Configuration
 
-Settings live in `src/main/resources/application.yaml`.
+Settings live in `dcim-demo/src/main/resources/application.yaml`.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -164,8 +176,8 @@ Settings live in `src/main/resources/application.yaml`.
 | `spring.graphql.graphiql.enabled` | `true` | GraphiQL at `/graphiql` |
 | `PHASE1_DB_URL`, `PHASE1_DB_USER`, `PHASE1_DB_PASSWORD` | local `phase1` database | Database when Docker Compose is off |
 
-**Start from scratch:** stop the app, run `docker compose down -v` to remove the database container and its
-data, and start again.
+**Start from scratch:** stop the app, run `docker compose -f dcim-demo/compose.yaml down -v` to remove the
+database container and its data, and start again.
 
 **See the SQL:** `./gradlew bootRun --args='--logging.level.org.hibernate.SQL=debug'`.
 
@@ -174,31 +186,46 @@ data, and start again.
 ## Project layout
 
 ```text
-src/main/java/com/aixpertsoft/
-  Phase1Application.java       Spring Boot entry point
-  datastack/                   reusable framework, will become the shared runtime library
-    dao/                       Dao, JpaDao (raises rule events), NotFoundException
-    rules/                     @Rule, RuleDispatcher, BeforeSave, RuleViolation
-    web/                       error handling (problem+json with codes)
-  dcim/                        the Rack microservice
-    entity/                    JPA entities
-    dao/                       DAOs
-    rules/                     business rules
-    service/                   transactional use cases
-    api/                       request and response records
-    rest/                      REST controllers
-    view/                      GraphQL view: controller, batched data access, REST endpoint
-    demo/                      demo data
-src/main/resources/
-  application.yaml
-  db/changelog/phase1.sql      Liquibase changelog
-  graphql/schema.graphqls      GraphQL schema for views
-  graphql-documents/           stored view queries (RackOverview.graphql)
-src/test/java/...              rule unit tests, API integration test
-test/postman/                  Postman collection testing the running API
-compose.yaml                   PostgreSQL for the demo
-requests.http                  walk-through of the API
+settings.gradle                  the three modules
+build.gradle                     settings shared by all modules (Java 21, tests)
+gradle/libs.versions.toml        versions (Spring Boot, plugins)
+
+datastack-runtime/               reusable framework, no Spring Boot
+  src/main/java/com/aixpertsoft/datastack/
+    dao/                         Dao, JpaDao (raises rule events), NotFoundException
+    rules/                       @Rule, RuleDispatcher, BeforeSave, RuleViolation
+    web/                         error handling (problem+json with codes)
+
+dcim-demo/                       the Spring Boot demo
+  compose.yaml                   PostgreSQL for the demo
+  src/main/java/com/aixpertsoft/
+    Phase1Application.java       entry point
+    dcim/
+      entity/  dao/  rules/  service/  api/  rest/  view/  demo/
+  src/main/resources/
+    application.yaml
+    db/changelog/phase1.sql      Liquibase changelog
+    graphql/schema.graphqls      GraphQL schema for views
+    graphql-documents/           stored view queries (RackOverview.graphql)
+  src/test/java/...              rule unit tests, API integration test
+
+datastack-generator/             model.json -> (later) generated code
+  src/main/java/.../generator/   Main, ModelLoader, ModelValidator, model records
+  src/test/resources/dcim/       sample model of this demo
+
+test/postman/                    Postman collection testing the running API
+requests.http                    walk-through of the API
 ```
+
+### The generator
+
+```bash
+./gradlew :datastack-generator:run                                   # validates the sample dcim model
+./gradlew :datastack-generator:run --args="path/to/model.json"       # any model
+```
+
+It prints a summary of objects, relations and views, and lists every problem it finds (unknown objects in
+relations, missing discriminator values, unknown attribute types, missing view query files, …).
 
 ---
 
@@ -207,6 +234,6 @@ requests.http                  walk-through of the API
 | Problem | Fix |
 | --- | --- |
 | `Unable to start docker compose` or Docker errors at start-up | Start Docker Desktop, or follow [Without Docker](#without-docker) |
-| Port 15432 already in use | Change the host port in `compose.yaml` |
+| Port 15432 already in use | Change the host port in `dcim-demo/compose.yaml` |
 | Port 8080 already in use | `./gradlew bootRun --args='--server.port=8081'` |
 | `Unsupported class file major version` | Gradle is running on an old JDK: point `JAVA_HOME` at JDK 21 |

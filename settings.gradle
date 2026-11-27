@@ -5,4 +5,8 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'aixboms-datastack-phase1'
+rootProject.name = 'jpa-dao-demo'
+
+include 'datastack-runtime'      // reusable framework: Dao, JpaDao, @Rule, RuleDispatcher, error handling
+include 'dcim-demo'              // Spring Boot app: the Rack / Component / Person microservice
+include 'datastack-generator'    // model.json -> code (Phase 2); today: reads and validates a model

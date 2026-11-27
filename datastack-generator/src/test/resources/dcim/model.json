@@ -1,0 +1,209 @@
+{
+  "id": "dcim",
+  "version": "0.1.0",
+  "javaPackage": "com.aixpertsoft.dcim",
+  "restBasePath": "/api",
+  "dependsOn": [],
+  "include": [],
+  "objects": [
+    {
+      "id": "Component",
+      "table": "component",
+      "key": {
+        "name": "id",
+        "type": "uuid",
+        "generated": true
+      },
+      "inheritance": {
+        "strategy": "singleTable",
+        "discriminator": "type",
+        "value": "COMPONENT"
+      },
+      "versioned": true,
+      "attributes": [
+        {
+          "name": "name",
+          "type": "string",
+          "length": 120,
+          "required": true
+        },
+        {
+          "name": "serialNumber",
+          "type": "string",
+          "length": 60,
+          "unique": true
+        }
+      ],
+      "rest": {
+        "path": "components",
+        "operations": [
+          "list",
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    },
+    {
+      "id": "Rack",
+      "extends": "Component",
+      "discriminatorValue": "RACK",
+      "attributes": [
+        {
+          "name": "heightUnits",
+          "type": "integer",
+          "min": 1,
+          "max": 60,
+          "default": 42
+        }
+      ],
+      "rest": {
+        "path": "racks",
+        "operations": [
+          "list",
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    },
+    {
+      "id": "Person",
+      "table": "person",
+      "key": {
+        "name": "id",
+        "type": "uuid",
+        "generated": true
+      },
+      "versioned": true,
+      "attributes": [
+        {
+          "name": "name",
+          "type": "string",
+          "length": 120,
+          "required": true
+        },
+        {
+          "name": "personType",
+          "type": "enum",
+          "values": [
+            "HUMAN",
+            "AI"
+          ],
+          "required": true
+        },
+        {
+          "name": "contact",
+          "storage": "json",
+          "type": "object",
+          "properties": [
+            {
+              "name": "email",
+              "type": "string",
+              "format": "email"
+            },
+            {
+              "name": "phone",
+              "type": "string"
+            },
+            {
+              "name": "endpoint",
+              "type": "string",
+              "format": "uri"
+            }
+          ]
+        }
+      ],
+      "rest": {
+        "path": "persons",
+        "operations": [
+          "list",
+          "read",
+          "create",
+          "update",
+          "delete"
+        ]
+      }
+    }
+  ],
+  "relations": [
+    {
+      "id": "RackChildren",
+      "type": "oneToMany",
+      "from": {
+        "object": "Rack",
+        "name": "children"
+      },
+      "to": {
+        "object": "Component",
+        "name": "rack",
+        "min": 0
+      },
+      "column": "rack_id",
+      "onDelete": {
+        "from": "restrict"
+      }
+    },
+    {
+      "id": "RackAdministrator",
+      "type": "manyToMany",
+      "from": {
+        "object": "Rack",
+        "name": "administrators",
+        "min": 0
+      },
+      "to": {
+        "object": "Person",
+        "name": "administeredRacks",
+        "min": 0
+      },
+      "intersection": {
+        "table": "rack_administrator",
+        "attributes": [
+          {
+            "name": "primaryAdministrator",
+            "type": "boolean",
+            "required": true,
+            "default": false
+          }
+        ],
+        "unique": [
+          "from",
+          "to"
+        ],
+        "uniqueWhere": [
+          {
+            "columns": [
+              "from"
+            ],
+            "where": "primaryAdministrator = true"
+          }
+        ]
+      },
+      "onDelete": {
+        "from": "cascadeLinks",
+        "to": "cascadeLinks"
+      }
+    }
+  ],
+  "views": [
+    {
+      "id": "RackOverview",
+      "query": "views/RackOverview.graphql",
+      "provider": "jpa",
+      "rest": {
+        "path": "views/rack-overview",
+        "parameters": {
+          "page": "page",
+          "size": "size",
+          "name": "nameLike"
+        }
+      },
+      "acl": {
+        "read": "dcim.rack.read"
+      }
+    }
+  ]
+}
