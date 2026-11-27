@@ -1,0 +1,2239 @@
+{
+  "info": {
+    "_postman_id": "2b36f198-3245-5172-bba2-5af602db49a3",
+    "name": "AixBOMS data stack - hogwarts",
+    "description": "Tests for the generated hogwarts-service (Harry Potter wizards, houses and spells): views, namespaced GraphQL, CRUD, inheritance, JSON attributes, the 1-to-N and M-to-N relationships, both business rules and the error codes.\n\nRun the whole collection top to bottom (Collection Runner or `newman run`): requests save ids that later requests use. Needs the demo data (demo.seed=true). Each run uses its own names and deletes what it created.\n\nWorks against the model running on its own or inside datastack-server: set `baseUrl` (default http://localhost:8080). `api` is the model's REST base path, /api/hogwarts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1 Views (demo data)",
+      "description": "Read-only checks on the Harry Potter demo data, through the three views. Saves ids used later.",
+      "item": [
+        {
+          "name": "Wizard overview: Harry Potter",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?name=Harry%20Potter"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// New suffix for every run, so names never clash with earlier runs",
+                  "pm.collectionVariables.set(\"runId\", Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const harry = page.items[0];",
+                  "pm.test(\"exactly one Harry\", () => pm.expect(page.total).to.eql(1));",
+                  "pm.test(\"student of Gryffindor\", () => { pm.expect(harry.type).to.eql(\"WIZARD\"); pm.expect(harry.house.name).to.eql(\"Gryffindor\"); });",
+                  "pm.test(\"stag patronus, holly wand (JSON attribute)\", () => { pm.expect(harry.patronus).to.eql(\"Stag\"); pm.expect(harry.wand.wood).to.eql(\"Holly\"); pm.expect(harry.wand.core).to.eql(\"Phoenix feather\"); });",
+                  "pm.test(\"spells carry level, favourite and the spell\", () => harry.spells.forEach(s => { pm.expect(s.level).to.be.within(1, 9); pm.expect(s.favourite).to.be.a(\"boolean\"); pm.expect(s.spell).to.have.property(\"incantation\"); }));",
+                  "const favourites = harry.spells.filter(s => s.favourite);",
+                  "pm.test(\"one favourite, listed first\", () => { pm.expect(favourites).to.have.lengthOf(1); pm.expect(harry.spells[0].favourite).to.be.true; });",
+                  "pm.collectionVariables.set(\"harryId\", harry.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Filter by name: every Weasley",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?name=%25weasley"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const names = page.items.map(w => w.name);",
+                  "pm.test(\"Ron and Ginny\", () => pm.expect(names).to.include.members([\"Ron Weasley\", \"Ginny Weasley\"]));",
+                  "pm.test(\"filter is case-insensitive LIKE\", () => names.forEach(n => pm.expect(n.toLowerCase()).to.include(\"weasley\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Professors show their subject (subtype in a supertype view)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?name=Severus%20Snape"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const snape = page.items[0];",
+                  "pm.test(\"Snape is a professor of Potions\", () => { pm.expect(snape.type).to.eql(\"PROFESSOR\"); pm.expect(snape.subject).to.eql(\"Potions\"); });",
+                  "pm.test(\"Sectumsempra is his favourite\", () => pm.expect(snape.spells.find(s => s.favourite).spell.name).to.eql(\"Sectumsempra\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paging",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?page=1&size=5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"page 1 of size 5\", () => { pm.expect(page.page).to.eql(1); pm.expect(page.size).to.eql(5); pm.expect(page.items.length).to.be.at.most(5); });",
+                  "pm.test(\"total counts every wizard\", () => pm.expect(page.total).to.be.at.least(16));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spell book: Avada Kedavra and its casters (M-to-N from the spell side)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/spell-book?name=Avada%25"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const avada = page.items[0];",
+                  "pm.test(\"the Killing Curse is unforgivable\", () => { pm.expect(avada.name).to.eql(\"Killing Curse\"); pm.expect(avada.category).to.eql(\"CURSE\"); pm.expect(avada.unforgivable).to.be.true; });",
+                  "const casters = avada.casters.map(c => c.wizard.name);",
+                  "pm.test(\"cast by Voldemort, Bellatrix and Snape\", () => pm.expect(casters).to.include.members([\"Tom Riddle\", \"Bellatrix Lestrange\", \"Severus Snape\"]));",
+                  "pm.test(\"casters come with level and house\", () => avada.casters.forEach(c => { pm.expect(c.level).to.be.at.least(7); pm.expect(c.wizard.house.name).to.be.a(\"string\"); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spell book: find Crucio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/spell-book?name=Crucio"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"found by incantation\", () => { pm.expect(page.total).to.eql(1); pm.expect(page.items[0].name).to.eql(\"Cruciatus Curse\"); });",
+                  "pm.collectionVariables.set(\"crucioId\", page.items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spell book: find Lumos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/spell-book?name=Lumos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"Wand-Lighting Charm\", () => pm.expect(page.items[0].name).to.eql(\"Wand-Lighting Charm\"));",
+                  "pm.collectionVariables.set(\"lumosId\", page.items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "House roster",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/house-roster?size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const byName = Object.fromEntries(page.items.map(h => [h.name, h]));",
+                  "pm.test(\"the four founding houses\", () => pm.expect(Object.keys(byName)).to.include.members([\"Gryffindor\", \"Hufflepuff\", \"Ravenclaw\", \"Slytherin\"]));",
+                  "pm.test(\"Slytherin's ghost is the Bloody Baron\", () => pm.expect(byName.Slytherin.ghost).to.eql(\"The Bloody Baron\"));",
+                  "pm.test(\"Gryffindor has students and professors\", () => { const types = byName.Gryffindor.members.map(m => m.type); pm.expect(types).to.include(\"WIZARD\"); pm.expect(types).to.include(\"PROFESSOR\"); });",
+                  "pm.collectionVariables.set(\"ravenclawId\", byName.Ravenclaw.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 GraphQL",
+      "description": "The same views through /graphql. Every view lives in the model's namespace: { hogwarts { ... } }.",
+      "item": [
+        {
+          "name": "Namespaced query: houses and their members",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{ hogwarts { houseRoster { total items { name animal members { name type subject } } } } }\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test(\"no errors\", () => pm.expect(res.errors).to.be.undefined);",
+                  "const houses = res.data.hogwarts.houseRoster.items;",
+                  "pm.test(\"at least the four houses\", () => pm.expect(houses.length).to.be.at.least(4));",
+                  "pm.test(\"professors have a subject, students do not\", () => houses.flatMap(h => h.members).forEach(m => m.type === \"PROFESSOR\" ? pm.expect(m.subject).to.be.a(\"string\") : pm.expect(m.subject).to.be.null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Only the fields you ask for",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{ hogwarts { wizardOverview(nameLike: \\\"%Granger\\\") { items { name patronus } } } }\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "const hermione = res.data.hogwarts.wizardOverview.items[0];",
+                  "pm.test(\"exactly the selected fields\", () => pm.expect(hermione).to.have.keys(\"name\", \"patronus\"));",
+                  "pm.test(\"otter patronus\", () => pm.expect(hermione.patronus).to.eql(\"Otter\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Variables: one wizard by pattern",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Find($name: String) { hogwarts { wizardOverview(nameLike: $name, size: 1) { total items { name house { name } } } } }\",\n  \"variables\": {\n    \"name\": \"%Lovegood\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "const view = res.data.hogwarts.wizardOverview;",
+                  "pm.test(\"Luna is the only Lovegood\", () => { pm.expect(view.total).to.eql(1); pm.expect(view.items[0].name).to.eql(\"Luna Lovegood\"); pm.expect(view.items[0].house.name).to.eql(\"Ravenclaw\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Many-to-many from the spell side: who casts Expelliarmus",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{ hogwarts { spellBook(nameLike: \\\"Expelliarmus\\\") { items { name casters { level favourite wizard { name type house { name } } } } } } }\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "const charm = res.data.hogwarts.spellBook.items[0];",
+                  "pm.test(\"the Disarming Charm\", () => pm.expect(charm.name).to.eql(\"Disarming Charm\"));",
+                  "pm.test(\"many casters, highest level first\", () => { const levels = charm.casters.map(c => c.level); pm.expect(levels.length).to.be.at.least(5); pm.expect(levels).to.eql([...levels].sort((a, b) => b - a)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deployed models",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{ datastackModels { id rest graphql schema } }\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "const hogwarts = res.data.datastackModels.find(m => m.id === \"hogwarts\");",
+                  "pm.test(\"hogwarts is deployed\", () => pm.expect(hogwarts).to.include({ rest: \"/api/hogwarts\", graphql: \"hogwarts\", schema: \"hogwarts\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Views are only reachable through the namespace",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{ wizardOverview { total } }\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test(\"validation error, no data\", () => { pm.expect(res.errors).to.be.an(\"array\").that.is.not.empty; pm.expect(res.data).to.be.oneOf([undefined, null]); });",
+                  "pm.test(\"names the unknown field\", () => pm.expect(JSON.stringify(res.errors)).to.include(\"wizardOverview\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 Houses (CRUD)",
+      "description": "Create, read, update and the error cases on a house of our own.",
+      "item": [
+        {
+          "name": "Create house",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/houses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ilvermorny {{runId}}\",\n  \"founder\": \"Isolt Sayre\",\n  \"animal\": \"Thunderbird\",\n  \"colours\": \"Cranberry and navy\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"created with version 0\", () => { pm.expect(b.name).to.eql(`Ilvermorny ${pm.collectionVariables.get(\"runId\")}`); pm.expect(b.version).to.eql(0); pm.expect(b.ghost).to.be.null; });",
+                  "pm.collectionVariables.set(\"houseId\", b.id);",
+                  "pm.collectionVariables.set(\"houseVersion\", b.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get house",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"same house\", () => { pm.expect(b.id).to.eql(pm.collectionVariables.get(\"houseId\")); pm.expect(b.animal).to.eql(\"Thunderbird\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List houses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses?size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"contains the new house\", () => pm.expect(page.items.map(h => h.id)).to.include(pm.collectionVariables.get(\"houseId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update house (partial, with version)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{houseVersion}},\n  \"ghost\": \"The Wampus {{runId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"ghost set, other fields unchanged\", () => { pm.expect(b.ghost).to.include(\"Wampus\"); pm.expect(b.founder).to.eql(\"Isolt Sayre\"); });",
+                  "pm.test(\"version increased\", () => pm.expect(b.version).to.be.above(Number(pm.collectionVariables.get(\"houseVersion\"))));",
+                  "pm.collectionVariables.set(\"houseVersion\", b.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update with stale version → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0,\n  \"ghost\": \"Nobody\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code concurrentModification\", () => pm.expect(p.code).to.eql(\"concurrentModification\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate house name → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/houses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gryffindor\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code duplicateName\", () => pm.expect(p.code).to.eql(\"duplicateName\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "House without a name → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/houses",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"founder\": \"Nobody\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"name\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown house → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/00000000-0000-0000-0000-000000000000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code notFound\", () => pm.expect(p.code).to.eql(\"notFound\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 Spells (CRUD, enum, defaults)",
+      "description": "Spells of our own: an ordinary charm and an unforgivable curse for the rule tests.",
+      "item": [
+        {
+          "name": "Create spell (defaults applied)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tickling Charm {{runId}}\",\n  \"incantation\": \"Rictusempra {{runId}}\",\n  \"category\": \"CHARM\",\n  \"difficulty\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"unforgivable defaults to false\", () => pm.expect(b.unforgivable).to.be.false);",
+                  "pm.test(\"category stored\", () => pm.expect(b.category).to.eql(\"CHARM\"));",
+                  "pm.collectionVariables.set(\"spellId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create an unforgivable curse (no incantation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Unforgivable Test Curse {{runId}}\",\n  \"category\": \"CURSE\",\n  \"unforgivable\": true,\n  \"difficulty\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"unforgivable, no incantation\", () => { pm.expect(b.unforgivable).to.be.true; pm.expect(b.incantation).to.be.null; });",
+                  "pm.collectionVariables.set(\"curseId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get spell",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/spells/{{spellId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"same spell\", () => pm.expect(b.incantation).to.include(\"Rictusempra\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update difficulty (partial, no version)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells/{{spellId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"difficulty\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"difficulty 3, name unchanged\", () => { pm.expect(b.difficulty).to.eql(3); pm.expect(b.name).to.include(\"Tickling Charm\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown category → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Prank {{runId}}\",\n  \"category\": \"PRANK\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code unreadable\", () => pm.expect(p.code).to.eql(\"unreadable\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"lists the accepted values\", () => pm.expect(p.detail).to.include(\"CHARM\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Difficulty above 5 → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Too Hard {{runId}}\",\n  \"category\": \"HEX\",\n  \"difficulty\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"difficulty\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spell without a category → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No Category {{runId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"category\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate incantation → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Copycat Charm {{runId}}\",\n  \"incantation\": \"Expelliarmus\",\n  \"category\": \"CHARM\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code duplicateIncantation\", () => pm.expect(p.code).to.eql(\"duplicateIncantation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 Wizards and professors (inheritance, JSON attribute)",
+      "description": "A student in our house and a professor in Ravenclaw: two types in one table.",
+      "item": [
+        {
+          "name": "Create wizard with a wand (JSON attribute)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Colin Creevey {{runId}}\",\n  \"yearOfBirth\": 1981,\n  \"wand\": {\n    \"wood\": \"Hornbeam\",\n    \"core\": \"Unicorn hair\",\n    \"lengthInches\": 10.5\n  },\n  \"houseId\": \"{{houseId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"a WIZARD in our house\", () => { pm.expect(b.type).to.eql(\"WIZARD\"); pm.expect(b.houseId).to.eql(pm.collectionVariables.get(\"houseId\")); });",
+                  "pm.test(\"wand stored as JSON\", () => pm.expect(b.wand).to.eql({ wood: \"Hornbeam\", core: \"Unicorn hair\", lengthInches: 10.5 }));",
+                  "pm.test(\"no subject for a student\", () => pm.expect(b.subject).to.be.null);",
+                  "pm.collectionVariables.set(\"colinId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create professor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/professors",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Gilderoy Lockhart {{runId}}\",\n  \"yearOfBirth\": 1964,\n  \"subject\": \"Defence Against the Dark Arts\",\n  \"wand\": {\n    \"wood\": \"Cherry\",\n    \"core\": \"Dragon heartstring\",\n    \"lengthInches\": 9\n  },\n  \"houseId\": \"{{ravenclawId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"a PROFESSOR with a subject\", () => { pm.expect(b.type).to.eql(\"PROFESSOR\"); pm.expect(b.subject).to.eql(\"Defence Against the Dark Arts\"); });",
+                  "pm.collectionVariables.set(\"lockhartId\", b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get the professor as a wizard (subtype through the supertype)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"type and subject come along\", () => { pm.expect(b.type).to.eql(\"PROFESSOR\"); pm.expect(b.subject).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List professors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/professors?size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"contains Lockhart\", () => pm.expect(page.items.map(p => p.id)).to.include(pm.collectionVariables.get(\"lockhartId\")));",
+                  "pm.test(\"only professors\", () => page.items.forEach(p => pm.expect(p.type).to.eql(\"PROFESSOR\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update professor subject",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/professors/{{lockhartId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Memory Charms (retired)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"subject changed\", () => pm.expect(b.subject).to.eql(\"Memory Charms (retired)\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replace the wand (JSON attribute)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wand\": {\n    \"wood\": \"Hornbeam\",\n    \"core\": \"Unicorn hair\",\n    \"lengthInches\": 11\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"new length\", () => pm.expect(b.wand.lengthInches).to.eql(11));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Professor without a subject → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/professors",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Quirinus Quirrell {{runId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"subject\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Year of birth out of range → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ancient {{runId}}\",\n  \"yearOfBirth\": 999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"yearOfBirth\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate wizard name → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Harry Potter\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code duplicateName\", () => pm.expect(p.code).to.eql(\"duplicateName\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "View shows the new professor",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?name=Gilderoy%20Lockhart%20{{runId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const w = page.items[0];",
+                  "pm.test(\"professor in Ravenclaw\", () => { pm.expect(w.type).to.eql(\"PROFESSOR\"); pm.expect(w.subject).to.eql(\"Memory Charms (retired)\"); pm.expect(w.house.name).to.eql(\"Ravenclaw\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 House members (1-to-N, restrict delete)",
+      "description": "Moving wizards between houses; a house with members cannot be deleted.",
+      "item": [
+        {
+          "name": "Move Lockhart into our house",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}/members/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"now in our house\", () => pm.expect(b.houseId).to.eql(pm.collectionVariables.get(\"houseId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Roster: our house has two members, Ravenclaw lost one",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/house-roster?size=100"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const ours = page.items.find(h => h.id === pm.collectionVariables.get(\"houseId\"));",
+                  "const ravenclaw = page.items.find(h => h.name === \"Ravenclaw\");",
+                  "pm.test(\"Colin and Lockhart in our house\", () => pm.expect(ours.members.map(m => m.name.split(\" \")[1])).to.have.members([\"Creevey\", \"Lockhart\"]));",
+                  "pm.test(\"Lockhart no longer in Ravenclaw\", () => pm.expect(ravenclaw.members.map(m => m.name)).not.to.include(`Gilderoy Lockhart ${pm.collectionVariables.get(\"runId\")}`));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a house that has members → 409",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.houseNotEmpty\", () => pm.expect(p.code).to.eql(\"hogwarts.houseNotEmpty\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove Lockhart from a house he is not in → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{ravenclawId}}/members/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.notInHouse\", () => pm.expect(p.code).to.eql(\"hogwarts.notInHouse\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove Lockhart from our house",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}/members/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lockhart has no house now",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"houseId is null\", () => pm.expect(b.houseId).to.be.null);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 Wizard spells (M-to-N with level and favourite)",
+      "description": "The intersection WizardSpell: attributes level (1-9) and favourite, rules SingleFavouriteSpell and UnforgivableCursesNeedPower.",
+      "item": [
+        {
+          "name": "Colin learns the Tickling Charm as his favourite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{spellId}}\",\n  \"level\": 3,\n  \"favourite\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"level 3, favourite\", () => { pm.expect(b.level).to.eql(3); pm.expect(b.favourite).to.be.true; pm.expect(b.spell.id).to.eql(pm.collectionVariables.get(\"spellId\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Colin learns Lumos as new favourite (demotes the old one)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "description": "The rule SingleFavouriteSpell demotes the previous favourite instead of failing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{lumosId}}\",\n  \"level\": 2,\n  \"favourite\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"Lumos is favourite\", () => pm.expect(b.favourite).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List: only Lumos is favourite",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const links = pm.response.json();",
+                  "const favourites = links.filter(l => l.favourite);",
+                  "pm.test(\"exactly one favourite: Lumos\", () => { pm.expect(favourites).to.have.lengthOf(1); pm.expect(favourites[0].spell.id).to.eql(pm.collectionVariables.get(\"lumosId\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Make the Tickling Charm favourite again (update)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{spellId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"favourite\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"favourite\", () => pm.expect(b.favourite).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List: only the Tickling Charm is favourite",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const links = pm.response.json();",
+                  "const favourites = links.filter(l => l.favourite);",
+                  "pm.test(\"exactly one favourite: Tickling Charm\", () => { pm.expect(favourites).to.have.lengthOf(1); pm.expect(favourites[0].spell.id).to.eql(pm.collectionVariables.get(\"spellId\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level up (partial update of the link)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{spellId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"level 5, still favourite\", () => { pm.expect(b.level).to.eql(5); pm.expect(b.favourite).to.be.true; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level 10 → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{crucioId}}\",\n  \"level\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"names the field\", () => pm.expect(p.detail).to.include(\"level\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level 0 on update → 400",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{spellId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing level → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{crucioId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code validation\", () => pm.expect(p.code).to.eql(\"validation\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same spell twice → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{spellId}}\",\n  \"level\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.duplicateSpell\", () => pm.expect(p.code).to.eql(\"hogwarts.duplicateSpell\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unforgivable curse below level 7 → 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "description": "Custom rule UnforgivableCursesNeedPower: combines the link's level with the spell's unforgivable flag.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{curseId}}\",\n  \"level\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.unforgivableTooWeak\", () => pm.expect(p.code).to.eql(\"hogwarts.unforgivableTooWeak\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+                  "pm.test(\"you need to really mean it\", () => pm.expect(p.detail).to.include(\"really mean it\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unforgivable curse at level 7",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"{{curseId}}\",\n  \"level\": 7\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test(\"level 7\", () => pm.expect(b.level).to.eql(7));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Weakening the curse to level 3 → 422 (rule runs on update too)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{curseId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.unforgivableTooWeak\", () => pm.expect(p.code).to.eql(\"hogwarts.unforgivableTooWeak\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Spell book shows Colin as caster",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/spell-book?name=Tickling%20Charm%20{{runId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const caster = page.items[0].casters[0];",
+                  "pm.test(\"Colin, level 5, favourite\", () => { pm.expect(caster.wizard.name).to.include(\"Colin Creevey\"); pm.expect(caster.level).to.eql(5); pm.expect(caster.favourite).to.be.true; });",
+                  "pm.test(\"with his house\", () => pm.expect(caster.wizard.house.name).to.include(\"Ilvermorny\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wizard overview: favourite first, then by level",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/views/wizard-overview?name=Colin%20Creevey%20{{runId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "const spells = page.items[0].spells;",
+                  "pm.test(\"three spells\", () => pm.expect(spells).to.have.lengthOf(3));",
+                  "pm.test(\"favourite first\", () => { pm.expect(spells[0].favourite).to.be.true; pm.expect(spells[0].spell.name).to.include(\"Tickling Charm\"); });",
+                  "pm.test(\"then highest level\", () => pm.expect(spells[1].level).to.be.at.least(spells[2].level));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forget Lumos",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{lumosId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forget Lumos again → 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells/{{lumosId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code hogwarts.notASpell\", () => pm.expect(p.code).to.eql(\"hogwarts.notASpell\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Learn an unknown spell → 404",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}/spells",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"spellId\": \"00000000-0000-0000-0000-000000000000\",\n  \"level\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code notFound\", () => pm.expect(p.code).to.eql(\"notFound\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8 Cleanup",
+      "description": "Deletes everything this run created; the demo data stays untouched.",
+      "item": [
+        {
+          "name": "Delete Colin (his spell links go with him)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Colin is gone → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{colinId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code notFound\", () => pm.expect(p.code).to.eql(\"notFound\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Lockhart",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{lockhartId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete our house (empty now)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/houses/{{houseId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the Tickling Charm",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/spells/{{spellId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the test curse",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/spells/{{curseId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deleted spell is gone → 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/spells/{{curseId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"code notFound\", () => pm.expect(p.code).to.eql(\"notFound\"));",
+                  "pm.test(\"problem+json\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Demo data untouched: Harry still knows his spells",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}{{api}}/wizards/{{harryId}}/spells"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Harry's spellbook is intact\", () => pm.expect(pm.response.json().length).to.be.at.least(7));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "api",
+      "value": "/api/hogwarts"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "harryId",
+      "value": ""
+    },
+    {
+      "key": "crucioId",
+      "value": ""
+    },
+    {
+      "key": "lumosId",
+      "value": ""
+    },
+    {
+      "key": "ravenclawId",
+      "value": ""
+    },
+    {
+      "key": "houseId",
+      "value": ""
+    },
+    {
+      "key": "houseVersion",
+      "value": ""
+    },
+    {
+      "key": "spellId",
+      "value": ""
+    },
+    {
+      "key": "curseId",
+      "value": ""
+    },
+    {
+      "key": "colinId",
+      "value": ""
+    },
+    {
+      "key": "lockhartId",
+      "value": ""
+    }
+  ]
+}

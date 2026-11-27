@@ -268,7 +268,7 @@ datastack-server/                one Spring Boot server for many models
   deployments/                   model jars, copied by ./gradlew :<model>-service:deploy (not committed)
   compose.yaml                   PostgreSQL for the server (port 15435), one schema per model
 
-test/postman/                    Postman collection testing the running API
+test/postman/                    Postman collections: dcim-demo (Phase 1) and hogwarts-service
 requests.http                    walk-through of the API
 ```
 

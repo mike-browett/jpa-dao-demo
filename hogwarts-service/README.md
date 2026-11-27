@@ -91,6 +91,12 @@ curl -X PATCH -H 'Content-Type: application/json' -d '{"favourite":true}' $B/wiz
 
 ## Tests
 
+**Postman:** [`test/postman/hogwarts.postman_collection.json`](../test/postman/README.md#hogwarts), 72 requests
+and 207 assertions over views, GraphQL, CRUD, both relationships, both rules and every error code. Run it with
+`npx newman run test/postman/hogwarts.postman_collection.json` while the service (or `datastack-server`) runs.
+
+**Integration test:**
+
 `HogwartsApiIntegrationTest` starts the service with the demo data and checks the views, inheritance, the
 favourite swap, the unforgivable rule, ranges, duplicates, restrict-delete and enum errors. It uses
 Testcontainers, or set `HOGWARTS_TEST_DB_URL` to an empty database (wiped first):
