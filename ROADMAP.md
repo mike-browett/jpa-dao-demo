@@ -21,7 +21,7 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 | Several models on one server | ✅ | `datastack-server`, per-model deploy, restart needed |
 | Customisation (Phase 2) | 🔜 | Customer projects, customer attributes, Groovy rules |
 | Model evolution (changes after first deploy) | ⬜ ❓ | Today the generated changelog only creates tables |
-| Inter-model references (relations and view links across microservices) | ⬜ ❓ | Models are isolated today |
+| Inter-model references (relations and view links across microservices) | ⬜ | Shared database, foreign keys across schemas (decided). Models are isolated today |
 | Live deploy (no restart) | ⬜ | |
 | Security / ACL | ⬜ | |
 | Migration from BC4J (Verios) | ⬜ | Importer and pilot module |
@@ -94,17 +94,27 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 ### Inter-model references
 Relations and view links that span models (microservices), e.g. a `hogwarts` Wizard linked to a `dcim` Person.
 Today every model is self-contained: no relation, view link or GraphQL type can point into another model.
+
+**Decided (first version):** the models share one database, each in its own schema, so a reference is a real
+foreign key across schemas (`hogwarts.wizard.person_id → dcim.person.id`).
+
 - ⬜ Model syntax for a reference to another model's object: `"object": "dcim:Person"`, with the referenced
   model declared as a dependency (id and version range)
 - ⬜ Validation against the referenced model's published contract (its objects and keys), not its source
-- ⬜ View links across models:
-  - same server: resolve through the other model's view service or DAO (batched, no N+1)
-  - different servers: fetch through the other model's API (REST or GraphQL), batched by ids
-- ⬜ GraphQL: a node of one model exposing a field typed with another model's type (schema stitching or federation ❓)
-- ⬜ Integrity ❓: database foreign key across schemas when both models share a database; otherwise a reference
-  by id checked by a rule, and a policy when the referenced object is deleted (restrict, nullify, ignore)
-- ⬜ Deploy dependencies: refuse to deploy a model whose referenced models are missing or incompatible
-- ⬜ Writes: linking and unlinking across models through the REST API (stays an id on the referencing side)
+- ⬜ Liquibase: foreign key to the other schema, with the relation's `onDelete` (restrict, cascade, set null)
+  enforced by the database
+- ⬜ Deploy order and dependencies: the referenced model's schema must exist before the referencing model's
+  changelog runs; refuse to deploy when a referenced model is missing or incompatible; restrict changes to a
+  referenced key once others point at it
+- ⬜ Database rights: the referencing model's user needs `REFERENCES` (and `SELECT` for views) on the other schema
+- ⬜ JPA mapping of the referenced object ❓: a read-only reference entity generated in the referencing model
+  (id + the fields its views need, mapped to the other schema's table), or a compile dependency on the other
+  model's jar. The first keeps models decoupled and works whether or not they run on the same server
+- ⬜ View links across models: a plain JPQL join or batched query on the reference entity (no API calls)
+- ⬜ GraphQL: the referencing model's node exposes the reference as its own type (e.g. `HogwartsWizardPerson`)
+- ⬜ Writes: linking and unlinking across models through the referencing model's REST API
+- ⬜ Later, if models move to separate databases: reference by id checked by a rule, view links through the other
+  model's API, GraphQL stitching or federation ❓
 
 ### Runtime and deploy
 - ⬜ Live deploy: one classloader and child context per model; GraphQL schema swapped without restart
@@ -148,7 +158,8 @@ Today every model is self-contained: no relation, view link or GraphQL type can 
 | One schema per model, one database per server | ✅ decided |
 | Incremental changelogs: generated diff vs. hand-written changesets | ❓ open |
 | Live deploy vs. restart | ❓ restart accepted for now |
-| Inter-model references: shared database with cross-schema keys, or API calls between services; GraphQL stitching vs. federation | ❓ open |
+| Inter-model references: shared database, foreign keys across schemas | ✅ decided for the first version (separate databases and API calls later if needed) |
+| Inter-model references: read-only reference entity vs. dependency on the other model's jar | ❓ open |
 
 ---
 
