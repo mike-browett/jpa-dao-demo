@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: aixboms-datastack-phase1
+
+  # Used when PostgreSQL is NOT started through Docker Compose (see README, "Without Docker").
+  datasource:
+    url: ${PHASE1_DB_URL:jdbc:postgresql://localhost:5432/phase1}
+    username: ${PHASE1_DB_USER:phase1}
+    password: ${PHASE1_DB_PASSWORD:phase1}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Liquibase owns the schema; Hibernate only checks it
+
+  liquibase:
+    change-log: classpath:db/changelog/phase1.sql
+
+  graphql:
+    graphiql:
+      enabled: true               # http://localhost:8080/graphiql
+
+  docker:
+    compose:
+      lifecycle-management: start-only   # keep the database running between restarts
+
+demo:
+  seed: true                      # create a few racks, components and persons on first start
+
+logging:
+  level:
+    com.aixpertsoft: INFO

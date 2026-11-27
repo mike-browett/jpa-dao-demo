@@ -1,0 +1,49 @@
+# Read model for views. Writes go through the REST API, not through GraphQL mutations.
+
+type Query {
+  "Racks ordered by name; nameLike is an SQL LIKE pattern, e.g. \"LYO%\"."
+  racks(page: Int = 0, size: Int = 20, nameLike: String): [Rack!]!
+  rackCount(nameLike: String): Int!
+}
+
+type Rack {
+  id: ID!
+  name: String!
+  serialNumber: String
+  heightUnits: Int
+  "Relation RackChildren (1-to-N). Fetched in one batched query for all racks of a page."
+  children: [Component!]!
+  "Relation RackAdministrator (M-to-N) as edges carrying the intersection attribute."
+  administrators: [RackAdministratorEdge!]!
+}
+
+type Component {
+  id: ID!
+  "COMPONENT or RACK"
+  type: String!
+  name: String!
+  serialNumber: String
+}
+
+type RackAdministratorEdge {
+  primaryAdministrator: Boolean!
+  person: Person!
+}
+
+type Person {
+  id: ID!
+  name: String!
+  personType: PersonType!
+  contact: PersonContact
+}
+
+type PersonContact {
+  email: String
+  phone: String
+  endpoint: String
+}
+
+enum PersonType {
+  HUMAN
+  AI
+}

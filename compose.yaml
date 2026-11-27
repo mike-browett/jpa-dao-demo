@@ -1,0 +1,11 @@
+# PostgreSQL for the demo. Spring Boot starts it automatically on ./gradlew bootRun
+# (spring-boot-docker-compose) and connects to it; no manual setup needed.
+services:
+  postgres:
+    image: 'postgres:16'
+    environment:
+      POSTGRES_DB: phase1
+      POSTGRES_USER: phase1
+      POSTGRES_PASSWORD: phase1
+    ports:
+      - '15432:5432'   # host port 15432, so a local PostgreSQL on 5432 does not get in the way

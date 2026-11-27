@@ -1,0 +1,95 @@
+### AixBOMS data stack, Phase 1: example requests
+### Open in VS Code with the "REST Client" extension (or IntelliJ) and click "Send Request".
+### Run them top to bottom: later requests reuse ids from earlier responses.
+
+@api = http://localhost:8080/api
+
+### 1. The rack list the UI shows: racks + children + administrators (a GraphQL view served as REST)
+GET {{api}}/views/rack-overview?page=0&size=20
+
+### 2. Same view, filtered by name (SQL LIKE pattern, % encoded as %25)
+GET {{api}}/views/rack-overview?name=LYO%25
+
+### 3. Create a person (a human)
+# @name person
+POST {{api}}/persons
+Content-Type: application/json
+
+{ "name": "Lea Bernard", "personType": "HUMAN",
+  "contact": { "email": "lea.bernard@example.com", "phone": "+33 6 00 00 00 00" } }
+
+### 4. Create a person (an AI agent: different contact fields, same JSON attribute)
+# @name agent
+POST {{api}}/persons
+Content-Type: application/json
+
+{ "name": "Capacity Agent", "personType": "AI",
+  "contact": { "endpoint": "https://agents.example.com/capacity" } }
+
+### 5. Create a rack
+# @name rack
+POST {{api}}/racks
+Content-Type: application/json
+
+{ "name": "STE-R02", "serialNumber": "RK-0300", "heightUnits": 42 }
+
+### 6. Create a server inside that rack
+# @name server
+POST {{api}}/components
+Content-Type: application/json
+
+{ "name": "srv-web-01", "serialNumber": "SN-12001", "rackId": "{{rack.response.body.id}}" }
+
+### 7. Make Lea primary administrator
+POST {{api}}/racks/{{rack.response.body.id}}/administrators
+Content-Type: application/json
+
+{ "personId": "{{person.response.body.id}}", "primaryAdministrator": true }
+
+### 8. Make the agent primary too: rule SinglePrimaryAdministrator demotes Lea
+POST {{api}}/racks/{{rack.response.body.id}}/administrators
+Content-Type: application/json
+
+{ "personId": "{{agent.response.body.id}}", "primaryAdministrator": true }
+
+### 9. Check: the agent is primary, Lea is not
+GET {{api}}/racks/{{rack.response.body.id}}/administrators
+
+### 10. Give Lea the primary role back
+PATCH {{api}}/racks/{{rack.response.body.id}}/administrators/{{person.response.body.id}}
+Content-Type: application/json
+
+{ "primaryAdministrator": true }
+
+### 11. Remove the agent as administrator
+DELETE {{api}}/racks/{{rack.response.body.id}}/administrators/{{agent.response.body.id}}
+
+### 12. Try to delete the rack while the server is still in it -> 409 dcim.rackNotEmpty
+DELETE {{api}}/racks/{{rack.response.body.id}}
+
+### 13. Take the server out of the rack (the server is kept)
+DELETE {{api}}/racks/{{rack.response.body.id}}/children/{{server.response.body.id}}
+
+### 14. Put it back
+PUT {{api}}/racks/{{rack.response.body.id}}/children/{{server.response.body.id}}
+
+### 15. Update a person; "version" turns on optimistic locking (send the version you read)
+PATCH {{api}}/persons/{{person.response.body.id}}
+Content-Type: application/json
+
+{ "version": 0, "name": "Léa Bernard" }
+
+### 16. Plain lists
+GET {{api}}/persons?page=0&size=20
+
+###
+GET {{api}}/components?page=0&size=20
+
+###
+GET {{api}}/racks?name=STE%25
+
+### 17. GraphQL directly (the same schema the views use). Browser UI: http://localhost:8080/graphiql
+POST http://localhost:8080/graphql
+Content-Type: application/json
+
+{ "query": "{ rackCount racks(size: 5) { name children { name } administrators { primaryAdministrator person { name personType } } } }" }

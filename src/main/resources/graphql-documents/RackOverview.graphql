@@ -1,0 +1,26 @@
+# The RackOverview view: racks with their children and administrators.
+# Served as REST by GET /api/views/rack-overview; also runnable as-is in GraphiQL.
+query RackOverview($page: Int!, $size: Int!, $nameLike: String) {
+  rackCount(nameLike: $nameLike)
+  racks(page: $page, size: $size, nameLike: $nameLike) {
+    id
+    name
+    serialNumber
+    heightUnits
+    children {
+      id
+      type
+      name
+      serialNumber
+    }
+    administrators {
+      primaryAdministrator
+      person {
+        id
+        name
+        personType
+        contact { email phone endpoint }
+      }
+    }
+  }
+}
