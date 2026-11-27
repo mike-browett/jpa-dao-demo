@@ -16,13 +16,14 @@ be read, debugged and judged on its own:
 | Service | Transactional use cases |
 | REST | CRUD for persons, components and racks, plus relationship endpoints |
 
-The code is split into three Gradle modules:
+The code is split into four Gradle modules:
 
 | Module | What it is |
 | --- | --- |
 | `datastack-runtime` | The reusable framework: DAO base class, `@Rule` and the rule dispatcher, REST error handling |
-| `dcim-demo` | The Spring Boot demo: the Rack / Component / Person microservice built on the runtime |
-| `datastack-generator` | The future code generator. Today it reads a `model.json` and validates it |
+| `dcim-demo` | The Rack / Component / Person microservice, **written by hand** (Phase 1) |
+| `datastack-generator` | The code generator: validates a `model.json` and generates a microservice from it |
+| `dcim-service` | The same microservice, **generated** from [`dcim-service/model/model.json`](dcim-service/model/model.json) plus hand-written rules. See [its README](dcim-service/README.md) |
 
 How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -126,8 +127,10 @@ nobody changed the object in the meantime.
 ./gradlew :dcim-demo:test               # one module
 ```
 
-- **Generator tests** (`ModelValidatorTest`) load the sample `dcim` model and check that broken models are
-  reported.
+- **Generator tests** (`ModelValidatorTest`, `GeneratorTest`) check model validation and that owned files are
+  created once and never overwritten.
+- **`GeneratedRackApiIntegrationTest`** (in `dcim-service`) runs the same API checks as the demo against the
+  generated service. Without Docker, point it at an empty database with `DCIM_TEST_DB_URL`.
 - **Rule tests** (`NoContainmentCycleTest`, `SinglePrimaryAdministratorTest`) are plain unit tests with
   no Spring and no database. They take milliseconds.
 - **`RackApiIntegrationTest`** goes through the real REST API against a real PostgreSQL. It starts its own
@@ -240,9 +243,16 @@ dcim-demo/                       the Spring Boot demo
     graphql-documents/           stored view queries (RackOverview.graphql)
   src/test/java/...              rule unit tests, API integration test
 
-datastack-generator/             model.json -> (later) generated code
-  src/main/java/.../generator/   Main, ModelLoader, ModelValidator, model records
-  src/test/resources/dcim/       sample model of this demo
+datastack-generator/             model.json -> generated microservice
+  src/main/java/.../generator/   Main, ModelLoader, ModelValidator, ModelIndex, model records
+    gen/                         one generator per layer (changelog, entities, DAOs, DTOs, services, REST, views)
+  src/test/resources/dcim/       copy of the dcim model used by the tests
+
+dcim-service/                    the Rack microservice, generated
+  model/model.json               the model: source of truth for tables, entities, relations, views
+  compose.yaml                   PostgreSQL for dcim-service (port 15433)
+  src/main/java/...              owned subclasses (created once), @Rule classes, custom code
+  build/generated/datastack/     generated code and resources (not committed)
 
 test/postman/                    Postman collection testing the running API
 requests.http                    walk-through of the API
@@ -250,13 +260,20 @@ requests.http                    walk-through of the API
 
 ### The generator
 
+`dcim-service` is generated from its model on every build:
+
 ```bash
-./gradlew :datastack-generator:run                                   # validates the sample dcim model
-./gradlew :datastack-generator:run --args="path/to/model.json"       # any model
+./gradlew :dcim-service:generateCode      # validate the model, regenerate build/generated/datastack
+./gradlew :dcim-service:bootRun           # generate, compile and run (PostgreSQL on port 15433)
 ```
 
-It prints a summary of objects, relations and views, and lists every problem it finds (unknown objects in
-relations, missing discriminator values, unknown attribute types, missing view query files, …).
+To only check a model:
+
+```bash
+./gradlew :datastack-generator:run --args="validate dcim-service/model/model.json"
+```
+
+How generated and custom code live side by side is explained in [dcim-service/README.md](dcim-service/README.md).
 
 ---
 

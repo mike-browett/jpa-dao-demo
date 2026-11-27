@@ -1,0 +1,105 @@
+{
+  "id": "dcim",
+  "version": "0.1.0",
+  "javaPackage": "com.aixpertsoft.dcim",
+  "restBasePath": "/api",
+  "database": { "changelog": true },
+
+  "objects": [
+    {
+      "id": "Component",
+      "table": "component",
+      "inheritance": { "strategy": "singleTable", "discriminator": "type", "value": "COMPONENT" },
+      "attributes": [
+        { "name": "name",         "type": "string", "length": 120, "required": true },
+        { "name": "serialNumber", "type": "string", "length": 60,  "unique": true }
+      ],
+      "rest": { "path": "components" }
+    },
+    {
+      "id": "Rack",
+      "extends": "Component",
+      "discriminatorValue": "RACK",
+      "attributes": [
+        { "name": "heightUnits", "type": "integer", "min": 1, "max": 60, "default": 42 }
+      ],
+      "rest": { "path": "racks" }
+    },
+    {
+      "id": "Person",
+      "table": "person",
+      "attributes": [
+        { "name": "name",       "type": "string", "length": 120, "required": true },
+        { "name": "personType", "type": "enum", "values": ["HUMAN", "AI"], "required": true },
+        { "name": "contact",    "storage": "json", "type": "object",
+          "properties": [
+            { "name": "email",    "type": "string" },
+            { "name": "phone",    "type": "string" },
+            { "name": "endpoint", "type": "string" }
+          ] }
+      ],
+      "rest": { "path": "persons" }
+    }
+  ],
+
+  "relations": [
+    {
+      "id": "RackChildren",
+      "type": "oneToMany",
+      "from": { "object": "Rack",      "name": "children" },
+      "to":   { "object": "Component", "name": "rack", "min": 0 },
+      "column": "rack_id",
+      "onDelete": { "from": "restrict" },
+      "rest": { "path": "children" }
+    },
+    {
+      "id": "RackAdministrator",
+      "type": "manyToMany",
+      "from": { "object": "Rack",   "name": "administrators" },
+      "to":   { "object": "Person", "name": "administeredRacks" },
+      "intersection": {
+        "table": "rack_administrator",
+        "attributes": [
+          { "name": "primaryAdministrator", "type": "boolean", "required": true, "default": false }
+        ],
+        "unique": ["from", "to"],
+        "uniqueWhere": [ { "columns": ["from"], "where": "primaryAdministrator = true" } ]
+      },
+      "rest": { "path": "administrators" }
+    }
+  ],
+
+  "views": [
+    {
+      "id": "RackOverview",
+      "rest": { "path": "rack-overview" },
+      "root": {
+        "object": "Rack",
+        "query": "select r from Rack r where lower(r.name) like lower(:nameLike) order by r.name",
+        "count": "select count(r) from Rack r where lower(r.name) like lower(:nameLike)",
+        "parameters": [ { "name": "nameLike", "type": "string", "default": "%", "rest": "name" } ],
+        "fields": ["id", "name", "serialNumber", "heightUnits"],
+        "links": [
+          {
+            "name": "children",
+            "object": "Component",
+            "query": "select c from Component c where c.rack.id in :parentIds order by c.name",
+            "parentKey": "rack.id",
+            "fields": ["id", "type", "name", "serialNumber"]
+          },
+          {
+            "name": "administrators",
+            "object": "RackAdministrator",
+            "query": "select ra from RackAdministrator ra join fetch ra.person p where ra.rack.id in :parentIds order by ra.primaryAdministrator desc, p.name",
+            "parentKey": "rack.id",
+            "fields": ["primaryAdministrator"],
+            "links": [
+              { "name": "person", "object": "Person", "path": "person",
+                "fields": ["id", "name", "personType", "contact"] }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

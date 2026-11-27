@@ -9,4 +9,5 @@ rootProject.name = 'jpa-dao-demo'
 
 include 'datastack-runtime'      // reusable framework: Dao, JpaDao, @Rule, RuleDispatcher, error handling
 include 'dcim-demo'              // Spring Boot app: the Rack / Component / Person microservice
-include 'datastack-generator'    // model.json -> code (Phase 2); today: reads and validates a model
+include 'datastack-generator'    // model.json -> code
+include 'dcim-service'           // the Rack microservice, generated from dcim-service/model/model.json

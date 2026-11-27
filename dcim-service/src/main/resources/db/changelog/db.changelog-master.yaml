@@ -1,0 +1,7 @@
+# Created once by datastack-generator. This file is yours.
+# The generated changelog comes from model.json; hand-written changesets go in custom.sql.
+databaseChangeLog:
+  - include:
+      file: db/changelog/generated/dcim.sql
+  - include:
+      file: db/changelog/custom.sql

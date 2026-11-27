@@ -1,0 +1,30 @@
+# Created once by datastack-generator. This file is yours: the generator never overwrites it.
+spring:
+  application:
+    name: dcim-service
+
+  # Used when PostgreSQL is not started through Docker Compose.
+  datasource:
+    url: ${DCIM_DB_URL:jdbc:postgresql://localhost:5432/dcim}
+    username: ${DCIM_DB_USER:dcim}
+    password: ${DCIM_DB_PASSWORD:dcim}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Liquibase owns the schema
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  graphql:
+    graphiql:
+      enabled: true
+
+  docker:
+    compose:
+      lifecycle-management: start-only
+
+# ---- custom settings ----
+demo:
+  seed: true

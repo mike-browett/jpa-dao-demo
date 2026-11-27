@@ -1,0 +1,64 @@
+// The Rack microservice, generated from model/model.json.
+//
+//   model/model.json          source of truth for tables, entities, relations and views
+//   build/generated/datastack generated code and resources: rewritten on every build, never edited
+//   src/main/java, resources  code you own: subclasses created once by the generator, rules, custom logic
+//
+// ./gradlew :dcim-service:generateCode   regenerates (also runs automatically before compileJava)
+plugins {
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+}
+
+description = 'Rack microservice generated from model.json'
+
+configurations {
+    datastackGenerator
+}
+
+dependencies {
+    datastackGenerator project(':datastack-generator')
+
+    implementation project(':datastack-runtime')
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-graphql'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-liquibase'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+}
+
+def generatedJava = layout.buildDirectory.dir('generated/datastack/java')
+def generatedResources = layout.buildDirectory.dir('generated/datastack/resources')
+
+def generateCode = tasks.register('generateCode', JavaExec) {
+    group = 'datastack'
+    description = 'Generates entities, DAOs, services, REST, views and the Liquibase changelog from model/model.json'
+    classpath = configurations.datastackGenerator
+    mainClass = 'com.aixpertsoft.datastack.generator.Main'
+
+    inputs.dir('model')
+    outputs.dir(generatedJava)
+    outputs.dir(generatedResources)
+
+    args 'generate',
+         '--model', file('model/model.json').absolutePath,
+         '--generated-java', generatedJava.get().asFile.absolutePath,
+         '--generated-resources', generatedResources.get().asFile.absolutePath,
+         '--owned-java', file('src/main/java').absolutePath,
+         '--owned-resources', file('src/main/resources').absolutePath
+}
+
+sourceSets {
+    main {
+        java.srcDir(generateCode.map { generatedJava })
+        resources.srcDir(generateCode.map { generatedResources })
+    }
+}

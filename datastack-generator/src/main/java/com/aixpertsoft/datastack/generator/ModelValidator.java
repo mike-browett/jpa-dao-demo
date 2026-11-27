@@ -5,7 +5,6 @@ import com.aixpertsoft.datastack.generator.model.Model;
 import com.aixpertsoft.datastack.generator.model.ObjectDef;
 import com.aixpertsoft.datastack.generator.model.RelationDef;
 import com.aixpertsoft.datastack.generator.model.ViewDef;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -39,7 +38,10 @@ public class ModelValidator {
 
         model.objects().forEach(o -> checkObject(o, objects, problems));
         model.relations().forEach(r -> checkRelation(r, objects, problems));
-        model.views().forEach(v -> checkView(v, modelDir, problems));
+        if (problems.stream().noneMatch(p -> p.contains("unknown object") || p.contains("extends"))) {
+            ModelIndex index = new ModelIndex(model);
+            model.views().forEach(v -> checkView(v, index, problems));
+        }
         checkRestPaths(model, problems);
         return problems;
     }
@@ -58,6 +60,10 @@ public class ModelValidator {
             }
         } else if (blank(object.table())) {
             problems.add(where + ": root object needs a \"table\"");
+        }
+        if (object.inheritance() != null && object.inheritance().strategy() != null
+                && !"singleTable".equals(object.inheritance().strategy())) {
+            problems.add(where + ": only \"singleTable\" inheritance is generated so far");
         }
         Set<String> names = new HashSet<>();
         for (ObjectDef o = object; o != null; o = o.extendsId() == null ? null : objects.get(o.extendsId())) {
@@ -82,15 +88,22 @@ public class ModelValidator {
         if (!ATTRIBUTE_TYPES.contains(attribute.type())) {
             problems.add(at + ": unknown type \"" + attribute.type() + "\"");
         }
-        if ("enum".equals(attribute.type()) && (attribute.values() == null || attribute.values().isEmpty())) {
+        if ("enum".equals(attribute.type()) && attribute.values().isEmpty()) {
             problems.add(at + ": enum needs \"values\"");
         }
         if ("object".equals(attribute.type()) && !attribute.isJson()) {
             problems.add(at + ": type \"object\" is only allowed with \"storage\": \"json\"");
         }
-        if (attribute.properties() != null) {
-            attribute.properties().forEach(p -> checkAttribute(at, p, problems));
+        if ("object".equals(attribute.type()) && attribute.properties().isEmpty()) {
+            problems.add(at + ": type \"object\" needs \"properties\"");
         }
+        attribute.properties().forEach(p -> {
+            if ("object".equals(p.type()) || "enum".equals(p.type())) {
+                problems.add(at + ", property " + p.name() + ": nested objects and enums are not generated yet");
+            } else {
+                checkAttribute(at, p, problems);
+            }
+        });
     }
 
     private void checkRelation(RelationDef relation, Map<String, ObjectDef> objects, List<String> problems) {
@@ -107,7 +120,19 @@ public class ModelValidator {
             problems.add(where + ": oneToMany cannot have an \"intersection\"");
         }
         if (relation.intersection() != null) {
+            if (blank(relation.intersection().table())) {
+                problems.add(where + ": intersection needs a \"table\"");
+            }
             relation.intersection().attributes().forEach(a -> checkAttribute(where + " (intersection)", a, problems));
+            for (RelationDef.UniqueWhere u : relation.intersection().uniqueWhere()) {
+                if (u.where() == null || !u.where().matches("\\w+\\s*=\\s*(true|false)")) {
+                    problems.add(where + ": uniqueWhere \"where\" must look like \"<booleanAttribute> = true\"");
+                }
+            }
+        }
+        if (relation.isManyToMany() && relation.from() != null && relation.to() != null
+                && relation.from().object() != null && relation.from().object().equals(relation.to().object())) {
+            problems.add(where + ": many-to-many from an object to itself is not supported yet");
         }
     }
 
@@ -122,11 +147,70 @@ public class ModelValidator {
         }
     }
 
-    private void checkView(ViewDef view, Path modelDir, List<String> problems) {
-        if (blank(view.query())) {
-            problems.add("view " + view.id() + ": \"query\" is missing");
-        } else if (!Files.isRegularFile(modelDir.resolve(view.query()))) {
-            problems.add("view " + view.id() + ": query file " + view.query() + " not found");
+    private static final Set<String> PARAMETER_TYPES = Set.of("string", "integer", "long", "boolean", "uuid");
+
+    private void checkView(ViewDef view, ModelIndex index, List<String> problems) {
+        String where = "view " + view.id();
+        if (view.root() == null) {
+            problems.add(where + ": \"root\" is missing");
+            return;
+        }
+        ViewDef.Node root = view.root();
+        if (blank(root.query())) {
+            problems.add(where + ": root needs a JPQL \"query\"");
+        }
+        for (ViewDef.Parameter p : root.parameters()) {
+            if (!PARAMETER_TYPES.contains(p.type())) {
+                problems.add(where + ", parameter " + p.name() + ": type must be one of " + PARAMETER_TYPES);
+            }
+            if (root.query() != null && !root.query().contains(":" + p.name())) {
+                problems.add(where + ", parameter " + p.name() + ": not used in the root query");
+            }
+        }
+        checkNode(where + " (root)", root, index, problems);
+    }
+
+    private void checkNode(String where, ViewDef.Node node, ModelIndex index, List<String> problems) {
+        ModelIndex.Entity entity;
+        try {
+            entity = index.entity(node.object());
+        } catch (IllegalArgumentException e) {
+            problems.add(where + ": unknown object " + node.object());
+            return;
+        }
+        if (node.fields().isEmpty()) {
+            problems.add(where + ": \"fields\" is empty");
+        }
+        for (String field : node.fields()) {
+            boolean builtIn = field.equals("id") || field.equals("version")
+                    || (field.equals("type") && index.hasDiscriminator(entity));
+            if (!builtIn && index.attribute(entity, field).isEmpty()) {
+                problems.add(where + ": " + node.object() + " has no attribute " + field);
+            }
+        }
+        for (ViewDef.Node link : node.links()) {
+            String at = where + ", link " + link.name();
+            if (blank(link.name())) {
+                problems.add(where + ": link without a \"name\"");
+                continue;
+            }
+            if (link.isQueryLink()) {
+                if (!link.query().contains(":parentIds")) {
+                    problems.add(at + ": query must filter on :parentIds");
+                }
+                if (!node.fields().contains("id")) {
+                    problems.add(at + ": the parent needs \"id\" in its fields, to match children to parents");
+                }
+            } else if (link.isPathLink()) {
+                boolean toOne = index.allToOnes(entity).stream()
+                        .anyMatch(r -> r.name().equals(link.path()) && r.target().name().equals(link.object()));
+                if (!toOne) {
+                    problems.add(at + ": " + node.object() + "." + link.path() + " is not a reference to " + link.object());
+                }
+            } else {
+                problems.add(at + ": needs either \"query\" + \"parentKey\" (batched) or \"path\" (navigation)");
+            }
+            checkNode(at, link, index, problems);
         }
     }
 

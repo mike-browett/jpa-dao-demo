@@ -3,6 +3,7 @@ package com.aixpertsoft.datastack.web;
 import com.aixpertsoft.datastack.dao.NotFoundException;
 import com.aixpertsoft.datastack.rules.RuleViolation;
 import jakarta.persistence.OptimisticLockException;
+import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -14,6 +15,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /** Turns exceptions into application/problem+json responses that always carry a stable "code". */
 @RestControllerAdvice
 public class ProblemHandler {
+
+    private final List<ConstraintMappings> constraints;
+
+    public ProblemHandler(List<ConstraintMappings> constraints) {
+        this.constraints = constraints;
+    }
 
     @ExceptionHandler(RuleViolation.class)
     ProblemDetail ruleViolation(RuleViolation e) {
@@ -45,23 +52,20 @@ public class ProblemHandler {
         return problem(HttpStatus.BAD_REQUEST, "validation", message);
     }
 
-    /** Database constraints are the last line of defence; map the known ones to readable codes. */
+    /**
+     * Database constraints are the last line of defence. Each microservice declares its constraints
+     * through {@link ConstraintMappings}; anything else becomes a generic 409.
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail integrity(DataIntegrityViolationException e) {
         String detail = String.valueOf(e.getMostSpecificCause().getMessage());
-        if (detail.contains("uq_rack_administrator")) {
-            return problem(HttpStatus.CONFLICT, "dcim.duplicateAdministrator",
-                    "This person already administers this rack");
-        }
-        if (detail.contains("ex_rack_primary_administrator")) {
-            return problem(HttpStatus.CONFLICT, "dcim.duplicatePrimary",
-                    "A rack can have only one primary administrator");
-        }
-        if (detail.contains("serial_number")) {
-            return problem(HttpStatus.CONFLICT, "duplicateSerialNumber",
-                    "Another component already has this serial number");
-        }
-        return problem(HttpStatus.CONFLICT, "constraintViolation", "The change violates a database constraint");
+        return constraints.stream()
+                .flatMap(c -> c.mappings().stream())
+                .filter(m -> detail.contains(m.constraint()))
+                .findFirst()
+                .map(m -> problem(m.status(), m.code(), m.message()))
+                .orElseGet(() -> problem(HttpStatus.CONFLICT, "constraintViolation",
+                        "The change violates a database constraint"));
     }
 
     private static ProblemDetail problem(HttpStatus status, String code, String message) {

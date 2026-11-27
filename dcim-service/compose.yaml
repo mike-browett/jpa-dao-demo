@@ -1,0 +1,10 @@
+# PostgreSQL for dcim-service. Spring Boot starts it automatically on bootRun.
+services:
+  postgres:
+    image: 'postgres:16'
+    environment:
+      POSTGRES_DB: dcim
+      POSTGRES_USER: dcim
+      POSTGRES_PASSWORD: dcim
+    ports:
+      - '15433:5432'   # 15433, so it can run next to dcim-demo's database on 15432

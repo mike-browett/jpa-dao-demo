@@ -24,6 +24,7 @@ class ModelValidatorTest {
 
         assertThat(model.objects()).extracting(o -> o.id()).containsExactly("Component", "Rack", "Person");
         assertThat(model.relations()).extracting(r -> r.id()).containsExactly("RackChildren", "RackAdministrator");
+        assertThat(model.views()).extracting(v -> v.id()).containsExactly("RackOverview");
         assertThat(validator.validate(model, file.getParent())).isEmpty();
     }
 
@@ -54,8 +55,7 @@ class ModelValidatorTest {
                       "attributes": [ { "name": "kind", "type": "enum" }, { "name": "name", "type": "text" } ] } ],
                   "relations": [
                     { "id": "Admins", "type": "manyToMany",
-                      "from": { "object": "Rack", "name": "admins" }, "to": { "object": "User", "name": "racks" } } ],
-                  "views": [ { "id": "Overview", "query": "views/Missing.graphql" } ] }""");
+                      "from": { "object": "Rack", "name": "admins" }, "to": { "object": "User", "name": "racks" } } ] }""");
 
         List<String> problems = validator.validate(loader.load(dir.resolve("model.json")), dir);
 
@@ -64,7 +64,33 @@ class ModelValidatorTest {
                 "object Person, attribute kind: enum needs \"values\"",
                 "object Person, attribute name: unknown type \"text\"",
                 "relation Admins: \"to\" refers to unknown object User",
-                "relation Admins: manyToMany needs an \"intersection\"",
-                "view Overview: query file views/Missing.graphql not found");
+                "relation Admins: manyToMany needs an \"intersection\"");
+    }
+
+    @Test
+    void brokenViewsAreReported(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("model.json"), """
+                { "id": "m", "javaPackage": "x",
+                  "objects": [
+                    { "id": "Rack", "table": "rack", "attributes": [ { "name": "name", "type": "string" } ] },
+                    { "id": "Server", "table": "server", "attributes": [ { "name": "name", "type": "string" } ] } ],
+                  "relations": [ { "id": "RackServers", "type": "oneToMany",
+                                   "from": { "object": "Rack", "name": "servers" }, "to": { "object": "Server", "name": "rack" } } ],
+                  "views": [ { "id": "Overview", "root": {
+                      "object": "Rack", "query": "select r from Rack r", "fields": ["name", "colour"],
+                      "parameters": [ { "name": "nameLike", "type": "string" } ],
+                      "links": [
+                        { "name": "servers", "object": "Server", "query": "select s from Server s", "parentKey": "rack.id",
+                          "fields": ["name"] },
+                        { "name": "owner", "object": "Server", "path": "owner", "fields": ["name"] } ] } } ] }""");
+
+        List<String> problems = validator.validate(loader.load(dir.resolve("model.json")), dir);
+
+        assertThat(problems).containsExactlyInAnyOrder(
+                "view Overview, parameter nameLike: not used in the root query",
+                "view Overview (root): Rack has no attribute colour",
+                "view Overview (root), link servers: query must filter on :parentIds",
+                "view Overview (root), link servers: the parent needs \"id\" in its fields, to match children to parents",
+                "view Overview (root), link owner: Rack.owner is not a reference to Server");
     }
 }

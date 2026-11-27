@@ -12,21 +12,32 @@ public record Model(String id,
                     String restBasePath,
                     List<String> dependsOn,
                     List<String> include,
+                    Database database,
                     List<ObjectDef> objects,
                     List<RelationDef> relations,
                     List<ViewDef> views) {
 
     public Model {
+        restBasePath = restBasePath != null ? restBasePath : "/api";
         dependsOn = orEmpty(dependsOn);
         include = orEmpty(include);
+        database = database != null ? database : new Database(true);
         objects = orEmpty(objects);
         relations = orEmpty(relations);
         views = orEmpty(views);
     }
 
+    /** "changelog": generate the Liquibase changelog (false when the schema is managed elsewhere). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Database(Boolean changelog) {
+        public boolean generateChangelog() {
+            return changelog == null || changelog;
+        }
+    }
+
     /** This model plus the elements of an included file. */
     public Model merge(Model other) {
-        return new Model(id, version, javaPackage, restBasePath, dependsOn, include,
+        return new Model(id, version, javaPackage, restBasePath, dependsOn, include, database,
                 concat(objects, other.objects), concat(relations, other.relations), concat(views, other.views));
     }
 

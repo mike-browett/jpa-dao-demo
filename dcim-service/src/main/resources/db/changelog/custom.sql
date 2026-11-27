@@ -1,0 +1,3 @@
+--liquibase formatted sql
+-- Created once by datastack-generator. This file is yours: add hand-written changesets here,
+-- e.g. extra indexes, data fixes, or changes to tables after the first deployment.

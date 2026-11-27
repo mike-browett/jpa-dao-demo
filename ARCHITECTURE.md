@@ -100,7 +100,8 @@ The code is split into Gradle modules along the same line:
 | --- | --- | --- |
 | `datastack-runtime` | `com.aixpertsoft.datastack`: the **framework** (`Dao`, `JpaDao`, `@Rule`, `RuleDispatcher`, `ProblemHandler`). Knows nothing about racks. A plain library, no Spring Boot. | JPA API, Spring context / web / orm |
 | `dcim-demo` | `com.aixpertsoft.dcim`: the **microservice** built on the runtime, plus the Spring Boot application | `datastack-runtime`, Spring Boot starters |
-| `datastack-generator` | `com.aixpertsoft.datastack.generator`: loads and validates `model.json`; will generate the code that is hand-written in `dcim-demo` today. Plain Java, no Spring. | Jackson |
+| `datastack-generator` | `com.aixpertsoft.datastack.generator`: validates `model.json` and generates a microservice from it. Plain Java, no Spring. | Jackson |
+| `dcim-service` | The same microservice as `dcim-demo`, generated from `model/model.json`; only rules and custom code are hand-written | `datastack-runtime`, Spring Boot starters; `datastack-generator` at build time |
 
 Because they are separate modules, `dcim-demo` can only use what the runtime exposes, and the runtime cannot
 depend on any microservice by accident: the module boundary is checked by the compiler.
@@ -279,7 +280,48 @@ worth checking while reviewing:
 
 ---
 
-## 9. Known simplifications
+## 9. The generator (`datastack-generator` → `dcim-service`)
+
+The **model** (`dcim-service/model/model.json`) is the source of truth for tables, entities, relations and
+views. **Custom code** is the source of truth for business rules and custom logic. The generator runs before
+every compile, so the Java compiler reports any mismatch between the two.
+
+```mermaid
+flowchart LR
+    model[model/model.json] --> gen[generateCode<br/>validate, generate]
+    gen --> generated[build/generated/datastack<br/>rewritten every build]
+    gen -.creates once.-> owned[src/main/java<br/>owned subclasses]
+    custom[rules, custom code] --> compile
+    generated --> compile[compileJava]
+    owned --> compile
+```
+
+| Layer | Generated (`…Base`, rewritten) | Owned (created once) |
+| --- | --- | --- |
+| Database | Liquibase changelog: tables, checks, unique and deferred exclusion constraints, FKs | `db.changelog-master.yaml`, `custom.sql` |
+| Persistence | `orm.xml` (entities, tables, inheritance) and `*Base` mapped superclasses | Entity classes without annotations |
+| DAO | `*DaoBase`: CRUD plus finders per reference | `*Dao`: custom queries |
+| Service | `*ServiceBase`: CRUD, delete checks, relationship operations, error codes | `*Service`: overrides |
+| REST | `*ControllerBase`, DTOs and requests with validation | `*Controller`: extra endpoints |
+| View | Node records, JPQL view service, GraphQL schema and resolvers, `ViewsController` | — |
+| Business logic | — | `@Rule` classes (written by hand) |
+
+Design choices:
+
+- **Generation gap instead of protected regions.** The generator never merges code: generated classes are
+  rewritten, owned classes are never touched. Customising means overriding or adding in the subclass.
+- **Mapping in `orm.xml`.** Owned entity classes carry no JPA annotations, so renaming a table or changing
+  a discriminator in the model never leaves them out of date.
+- **Views feed GraphQL.** A view is a root JPQL query with links: query links are batched by parent ids,
+  path links follow fetched references. Each view becomes GraphQL types, a query field, `@BatchMapping`
+  resolvers and a REST endpoint.
+- **Error codes from names.** `dcim.rackNotEmpty`, `dcim.duplicateAdministrator`, … come from object and
+  relation names, so clients see the same codes as with the hand-written demo.
+
+Proof: `GeneratedRackApiIntegrationTest` is the demo's API test, unchanged, and passes against the generated
+service. The view costs the same 4 SQL statements.
+
+## 10. Known simplifications (Phase 1 demo)
 
 - No security or ACL: all endpoints are open.
 - `BeforeSave` does not yet expose old values (`changed(attribute)` from the design doc). `NoContainmentCycle`
@@ -291,7 +333,7 @@ worth checking while reviewing:
 
 ---
 
-## 10. Open decisions
+## 11. Open decisions
 
 ### Inheritance strategy (decided for now: single table, revisit later)
 
