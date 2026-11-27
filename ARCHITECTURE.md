@@ -280,3 +280,27 @@ worth checking while reviewing:
 - No jOOQ yet; all access is JPA.
 - No OpenAPI spec or TypeScript client yet.
 - Views are hard-wired to one REST endpoint each.
+
+---
+
+## 10. Open decisions
+
+### Inheritance strategy (decided for now: single table, revisit later)
+
+Phase 1 keeps **single-table inheritance**: `Component` and `Rack` share table `component`, told apart by the
+`type` discriminator. This is the choice until more component types are modelled.
+
+To revisit because AixBOMS has **hundreds of component types**:
+
+- **Joined inheritance** (one table per subtype) gives clean tables and `NOT NULL` on subtype columns, but a
+  polymorphic query such as "all components in rack X" makes Hibernate outer-join every subtype table.
+  With hundreds of types that does not scale.
+- **Single table** stays fast, but every subtype column must be nullable and the table grows wide and sparse.
+- **Type as data**: one entity class, the type is a value pointing to a type definition, and type-specific
+  attributes live in the `jsonb` column. This is how most CMDBs handle a long tail of types; new types need
+  no new code.
+
+Likely end state: a per-hierarchy option in `model.json` (`singleTable`, `joined`, `typeAsData`), with a few
+important component types (Rack, Server, Switch) as real subclasses and the long tail as type-as-data.
+Persons (HUMAN / AI) can become single-table subclasses later without a schema change: `person_type` becomes
+the discriminator.
