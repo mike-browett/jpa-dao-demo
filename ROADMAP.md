@@ -21,6 +21,7 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 | Several models on one server | ✅ | `datastack-server`, per-model deploy, restart needed |
 | Customisation (Phase 2) | 🔜 | Customer projects, customer attributes, Groovy rules |
 | Model evolution (changes after first deploy) | ⬜ ❓ | Today the generated changelog only creates tables |
+| Inter-model references (relations and view links across microservices) | ⬜ ❓ | Models are isolated today |
 | Live deploy (no restart) | ⬜ | |
 | Security / ACL | ⬜ | |
 | Migration from BC4J (Verios) | ⬜ | Importer and pilot module |
@@ -90,6 +91,21 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 - ⬜ Constraint names unique across models, or match by schema (two models with `uq_person_name`)
 - ⬜ Generator as a real Gradle plugin (today a `JavaExec` task in each module)
 
+### Inter-model references
+Relations and view links that span models (microservices), e.g. a `hogwarts` Wizard linked to a `dcim` Person.
+Today every model is self-contained: no relation, view link or GraphQL type can point into another model.
+- ⬜ Model syntax for a reference to another model's object: `"object": "dcim:Person"`, with the referenced
+  model declared as a dependency (id and version range)
+- ⬜ Validation against the referenced model's published contract (its objects and keys), not its source
+- ⬜ View links across models:
+  - same server: resolve through the other model's view service or DAO (batched, no N+1)
+  - different servers: fetch through the other model's API (REST or GraphQL), batched by ids
+- ⬜ GraphQL: a node of one model exposing a field typed with another model's type (schema stitching or federation ❓)
+- ⬜ Integrity ❓: database foreign key across schemas when both models share a database; otherwise a reference
+  by id checked by a rule, and a policy when the referenced object is deleted (restrict, nullify, ignore)
+- ⬜ Deploy dependencies: refuse to deploy a model whose referenced models are missing or incompatible
+- ⬜ Writes: linking and unlinking across models through the REST API (stays an id on the referencing side)
+
 ### Runtime and deploy
 - ⬜ Live deploy: one classloader and child context per model; GraphQL schema swapped without restart
 - ⬜ Model jars with their own libraries (today the server provides everything)
@@ -132,6 +148,7 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 | One schema per model, one database per server | ✅ decided |
 | Incremental changelogs: generated diff vs. hand-written changesets | ❓ open |
 | Live deploy vs. restart | ❓ restart accepted for now |
+| Inter-model references: shared database with cross-schema keys, or API calls between services; GraphQL stitching vs. federation | ❓ open |
 
 ---
 
