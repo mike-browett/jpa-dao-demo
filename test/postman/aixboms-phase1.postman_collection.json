@@ -1,0 +1,1856 @@
+{
+  "info": {
+    "_postman_id": "e32e5bfe-0654-55ed-8ddf-e95d69f4c205",
+    "name": "AixBOMS data stack - Phase 1",
+    "description": "Tests for the Phase 1 demo: views, GraphQL, CRUD, relationships, business rules and error codes.\n\nRun the whole collection top to bottom (Collection Runner, or `newman run`): requests save the ids that later requests use, and every request has tests. Each run uses its own names and serial numbers and cleans up after itself.\n\nSet `baseUrl` if the app does not run on http://localhost:8080.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1 Views",
+      "description": "The UI's rack list: a stored GraphQL query served as plain REST.",
+      "item": [
+        {
+          "name": "Rack overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/views/rack-overview?page=0&size=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "views",
+                "rack-overview"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// New suffix for every run, so names and serial numbers never clash with earlier runs",
+                  "pm.collectionVariables.set(\"runId\", Date.now().toString(36));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"page shape\", () => { pm.expect(page).to.have.keys(\"page\",\"size\",\"total\",\"items\"); pm.expect(page.items).to.be.an(\"array\"); });",
+                  "pm.test(\"racks carry children and administrators\", () => page.items.forEach(r => { pm.expect(r.children).to.be.an(\"array\"); pm.expect(r.administrators).to.be.an(\"array\"); }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rack overview filtered by name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/views/rack-overview?name=LYO%25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "views",
+                "rack-overview"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "LYO%25"
+                }
+              ]
+            },
+            "description": "`name` is an SQL LIKE pattern; `%` is sent as `%25`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"only LYO racks\", () => pm.response.json().items.forEach(r => pm.expect(r.name).to.match(/^LYO/i)));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 GraphQL",
+      "description": "The schema behind the views, queried directly on POST /graphql. GraphiQL: {{baseUrl}}/graphiql",
+      "item": [
+        {
+          "name": "Racks with children and administrators",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  rackCount\n  racks(size: 5) {\n    name\n    heightUnits\n    children { name type }\n    administrators {\n      primaryAdministrator\n      person { name personType contact { email endpoint } }\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"no errors\", () => pm.expect(body.errors).to.be.undefined);",
+                  "pm.test(\"racks returned\", () => pm.expect(body.data.racks).to.be.an(\"array\"));",
+                  "pm.test(\"rackCount is a number\", () => pm.expect(body.data.rackCount).to.be.a(\"number\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Only the fields you ask for",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  racks(size: 3) { name }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "The response has exactly the shape of the query. Children and administrators are not even fetched."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"only name returned\", () => pm.response.json().data.racks.forEach(r => pm.expect(Object.keys(r)).to.eql([\"name\"])));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stored RackOverview query with variables",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query RackOverview($page: Int!, $size: Int!, $nameLike: String) {\n  rackCount(nameLike: $nameLike)\n  racks(page: $page, size: $size, nameLike: $nameLike) {\n    id name serialNumber heightUnits\n    children { id type name serialNumber }\n    administrators { primaryAdministrator person { id name personType contact { email phone endpoint } } }\n  }\n}",
+                "variables": "{\n  \"page\": 0,\n  \"size\": 10,\n  \"nameLike\": \"%R0%\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"no errors\", () => pm.expect(pm.response.json().errors).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown field is rejected",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  racks { name colour }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Validation against the schema happens before any code runs; GraphQL reports it in `errors`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test(\"validation error\", () => { pm.expect(body.errors).to.be.an(\"array\").that.is.not.empty; pm.expect(JSON.stringify(body.errors)).to.include(\"colour\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 Persons",
+      "description": "CRUD on persons. `contact` is a JSON attribute (jsonb column): humans and AI agents fill different fields.",
+      "item": [
+        {
+          "name": "Create human",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Human {{runId}}\",\n  \"personType\": \"HUMAN\",\n  \"contact\": {\n    \"email\": \"human.{{runId}}@example.com\",\n    \"phone\": \"+33 4 00 00 00 00\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json();",
+                  "pm.collectionVariables.set(\"personId\", p.id);",
+                  "pm.test(\"version 0\", () => pm.expect(p.version).to.eql(0));",
+                  "pm.test(\"contact stored\", () => pm.expect(p.contact.email).to.include(\"@example.com\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create AI agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM Agent {{runId}}\",\n  \"personType\": \"AI\",\n  \"contact\": {\n    \"endpoint\": \"https://agents.example.com/{{runId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json();",
+                  "pm.collectionVariables.set(\"agentId\", p.id);",
+                  "pm.test(\"AI with endpoint\", () => { pm.expect(p.personType).to.eql(\"AI\"); pm.expect(p.contact.endpoint).to.include(\"agents.example.com\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get person",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{personId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"same person\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"personId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List persons",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons?page=0&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"contains the new person\", () => pm.expect(pm.response.json().items.map(p => p.id)).to.include(pm.collectionVariables.get(\"personId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update person (partial, with version)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{personId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0,\n  \"contact\": {\n    \"email\": \"human.{{runId}}@example.com\",\n    \"phone\": \"+33 6 11 11 11 11\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Fields left out stay unchanged. `version` must be the one you read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"version incremented\", () => pm.expect(p.version).to.eql(1));",
+                  "pm.test(\"name unchanged\", () => pm.expect(p.name).to.include(\"PM Human\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update with stale version \u2192 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{personId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 0,\n  \"name\": \"should not be saved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"problem code concurrentModification\", () => pm.expect(pm.response.json().code).to.eql(\"concurrentModification\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create invalid person \u2192 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"problem code validation\", () => pm.expect(pm.response.json().code).to.eql(\"validation\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get unknown person \u2192 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"problem code notFound\", () => pm.expect(pm.response.json().code).to.eql(\"notFound\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 Racks and components",
+      "description": "CRUD on racks and components. A Rack is a Component (single-table inheritance).",
+      "item": [
+        {
+          "name": "Create rack A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM-{{runId}}-A\",\n  \"serialNumber\": \"PM-RK-{{runId}}-A\",\n  \"heightUnits\": 42\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const r = pm.response.json();",
+                  "pm.collectionVariables.set(\"rackAId\", r.id);",
+                  "pm.test(\"type RACK\", () => pm.expect(r.type).to.eql(\"RACK\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create rack B",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PM-{{runId}}-B\",\n  \"heightUnits\": 12\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"rackBId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get rack",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"42 units\", () => pm.expect(pm.response.json().heightUnits).to.eql(42));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List racks filtered by name",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks?name=PM-{{runId}}%25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "PM-{{runId}}%25"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"both test racks\", () => pm.expect(pm.response.json().total).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update rack",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackBId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"heightUnits\": 24\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"24 units\", () => pm.expect(pm.response.json().heightUnits).to.eql(24));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create component inside rack A",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/components",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"pm-srv-{{runId}}\",\n  \"serialNumber\": \"PM-SN-{{runId}}\",\n  \"rackId\": \"{{rackAId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json();",
+                  "pm.collectionVariables.set(\"componentId\", c.id);",
+                  "pm.test(\"type COMPONENT\", () => pm.expect(c.type).to.eql(\"COMPONENT\"));",
+                  "pm.test(\"in rack A\", () => pm.expect(c.rackId).to.eql(pm.collectionVariables.get(\"rackAId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Duplicate serial number \u2192 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/components",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"pm-dup-{{runId}}\",\n  \"serialNumber\": \"PM-SN-{{runId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"problem code duplicateSerialNumber\", () => pm.expect(pm.response.json().code).to.eql(\"duplicateSerialNumber\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get component",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/components/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List components",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/components?page=0&size=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "100"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"racks are components too\", () => pm.expect(pm.response.json().items.map(c => c.type)).to.include(\"RACK\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update component",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/components/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components",
+                "{{componentId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"pm-srv-{{runId}}-renamed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"renamed\", () => pm.expect(pm.response.json().name).to.include(\"renamed\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "heightUnits on a non-rack \u2192 422",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/components/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components",
+                "{{componentId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"heightUnits\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"problem code dcim.notARack\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.notARack\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Component used as a rack \u2192 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"problem code notFound\", () => pm.expect(pm.response.json().code).to.eql(\"notFound\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 Rack children (1-to-N)",
+      "description": "Putting components into racks and taking them out. Includes the NoContainmentCycle rule.",
+      "item": [
+        {
+          "name": "Move component to rack B",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackBId}}/children/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackBId}}",
+                "children",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"now in rack B\", () => pm.expect(pm.response.json().rackId).to.eql(pm.collectionVariables.get(\"rackBId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Put rack B into rack A",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/children/{{rackBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "children",
+                "{{rackBId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Put rack A into rack B \u2192 422 (rule NoContainmentCycle)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackBId}}/children/{{rackAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackBId}}",
+                "children",
+                "{{rackAId}}"
+              ]
+            },
+            "description": "A -> B -> A would be a cycle."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"problem code dcim.containmentCycle\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.containmentCycle\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Take out a component that is not there \u2192 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/children/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "children",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"problem code dcim.notInRack\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.notInRack\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a rack that has children \u2192 409",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"problem code dcim.rackNotEmpty\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.rackNotEmpty\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 Rack administrators (M-to-N)",
+      "description": "Administrators with the primaryAdministrator flag. Includes the SinglePrimaryAdministrator rule.",
+      "item": [
+        {
+          "name": "Add human as primary",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personId\": \"{{personId}}\",\n  \"primaryAdministrator\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"primary\", () => pm.expect(pm.response.json().primaryAdministrator).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add agent as primary (demotes the human)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personId\": \"{{agentId}}\",\n  \"primaryAdministrator\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List: agent is primary, human is not",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const links = pm.response.json(); const byId = id => links.find(l => l.person.id === pm.collectionVariables.get(id));",
+                  "pm.test(\"agent primary\", () => pm.expect(byId(\"agentId\").primaryAdministrator).to.be.true);",
+                  "pm.test(\"human demoted\", () => pm.expect(byId(\"personId\").primaryAdministrator).to.be.false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Make the human primary again",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators",
+                "{{personId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"primaryAdministrator\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List: human is primary again",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const links = pm.response.json(); const byId = id => links.find(l => l.person.id === pm.collectionVariables.get(id));",
+                  "pm.test(\"human primary\", () => pm.expect(byId(\"personId\").primaryAdministrator).to.be.true);",
+                  "pm.test(\"agent demoted\", () => pm.expect(byId(\"agentId\").primaryAdministrator).to.be.false);",
+                  "pm.test(\"exactly one primary\", () => pm.expect(links.filter(l => l.primaryAdministrator).length).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add the same person twice \u2192 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personId\": \"{{personId}}\",\n  \"primaryAdministrator\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"problem code dcim.duplicateAdministrator\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.duplicateAdministrator\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "View shows rack A with its administrators",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/views/rack-overview?name=PM-{{runId}}-A",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "views",
+                "rack-overview"
+              ],
+              "query": [
+                {
+                  "key": "name",
+                  "value": "PM-{{runId}}-A"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const page = pm.response.json();",
+                  "pm.test(\"one rack\", () => pm.expect(page.total).to.eql(1));",
+                  "const rack = page.items[0];",
+                  "pm.test(\"rack B is a child\", () => pm.expect(rack.children.map(c => c.type)).to.include(\"RACK\"));",
+                  "pm.test(\"human is primary in the view\", () => pm.expect(rack.administrators.find(a => a.primaryAdministrator).person.id).to.eql(pm.collectionVariables.get(\"personId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove the agent",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators",
+                "{{agentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove the agent again \u2192 404",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/administrators/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "administrators",
+                "{{agentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"problem code dcim.notAnAdministrator\", () => pm.expect(pm.response.json().code).to.eql(\"dcim.notAnAdministrator\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 Cleanup",
+      "description": "Removes everything this run created, through the API.",
+      "item": [
+        {
+          "name": "Take component out of rack B",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackBId}}/children/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackBId}}",
+                "children",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Take rack B out of rack A",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}/children/{{rackBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}",
+                "children",
+                "{{rackBId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete component",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/components/{{componentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "components",
+                "{{componentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete rack B",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackBId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackBId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete rack A (its administrator links go with it)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/racks/{{rackAId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "racks",
+                "{{rackAId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete human",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{personId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete agent",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{agentId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deleted person is gone \u2192 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/persons/{{personId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "persons",
+                "{{personId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"problem code notFound\", () => pm.expect(pm.response.json().code).to.eql(\"notFound\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "personId",
+      "value": ""
+    },
+    {
+      "key": "agentId",
+      "value": ""
+    },
+    {
+      "key": "rackAId",
+      "value": ""
+    },
+    {
+      "key": "rackBId",
+      "value": ""
+    },
+    {
+      "key": "componentId",
+      "value": ""
+    }
+  ]
+}

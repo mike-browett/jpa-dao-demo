@@ -58,6 +58,9 @@ curl http://localhost:8080/api/views/rack-overview
 *REST Client* extension (or in IntelliJ) and click *Send Request* on each block. It creates a person, a
 rack and a server, adds administrators, shows the business rules at work, and triggers the error cases.
 
+**Postman:** import [`test/postman/aixboms-phase1.postman_collection.json`](test/postman/README.md) and run
+the whole collection: 48 requests that test views, GraphQL, CRUD, relationships, rules and error codes.
+
 **GraphQL in the browser:** open http://localhost:8080/graphiql and run, for example:
 
 ```graphql
@@ -192,6 +195,7 @@ src/main/resources/
   graphql/schema.graphqls      GraphQL schema for views
   graphql-documents/           stored view queries (RackOverview.graphql)
 src/test/java/...              rule unit tests, API integration test
+test/postman/                  Postman collection testing the running API
 compose.yaml                   PostgreSQL for the demo
 requests.http                  walk-through of the API
 ```
