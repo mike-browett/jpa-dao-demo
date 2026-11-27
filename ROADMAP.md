@@ -96,7 +96,8 @@ Relations and view links that span models (microservices), e.g. a `hogwarts` Wiz
 Today every model is self-contained: no relation, view link or GraphQL type can point into another model.
 
 **Decided (first version):** the models share one database, each in its own schema, so a reference is a real
-foreign key across schemas (`hogwarts.wizard.person_id → dcim.person.id`).
+foreign key across schemas (`hogwarts.wizard.person_id → dcim.person.id`). A model that references another one
+depends on its code and is deployed in the same server, so its business logic can use the other model's DAOs.
 
 - ⬜ Model syntax for a reference to another model's object: `"object": "dcim:Person"`, with the referenced
   model declared as a dependency (id and version range)
@@ -107,12 +108,20 @@ foreign key across schemas (`hogwarts.wizard.person_id → dcim.person.id`).
   changelog runs; refuse to deploy when a referenced model is missing or incompatible; restrict changes to a
   referenced key once others point at it
 - ⬜ Database rights: the referencing model's user needs `REFERENCES` (and `SELECT` for views) on the other schema
-- ⬜ JPA mapping of the referenced object ❓: a read-only reference entity generated in the referencing model
-  (id + the fields its views need, mapped to the other schema's table), or a compile dependency on the other
-  model's jar. The first keeps models decoupled and works whether or not they run on the same server
-- ⬜ View links across models: a plain JPQL join or batched query on the reference entity (no API calls)
-- ⬜ GraphQL: the referencing model's node exposes the reference as its own type (e.g. `HogwartsWizardPerson`)
-- ⬜ Writes: linking and unlinking across models through the referencing model's REST API
+- ⬜ Model A depends on model B's code: A's custom code and rules use B's entities, DAOs and services
+  directly (`dcim:Person` is the real `com.aixpertsoft.dcim.entity.Person`). Same persistence unit, same
+  transaction: a write in A through B's DAO runs B's rules
+- ⬜ Build: A compiles against B's jar (`compileOnly`, not packaged into A); B publishes its model
+  (`META-INF/datastack/<model>-model.json`) so A's generator can resolve `dcim:Person`
+- ⬜ Co-deployment: A only runs in a server where B is deployed (dependency check at deploy and start-up)
+- ⬜ Dependencies form a graph without cycles (A → B allowed, then B → A refused); B's version range checked
+- ⬜ B's public surface ❓: which of B's classes A may use (services and DAOs, or entities too), so B can
+  change its internals without breaking A
+- ⬜ JPA: A's relation maps straight to B's entity class (`<many-to-one target-entity="...dcim.entity.Person">`)
+- ⬜ View links across models: plain JPQL joins or batched queries over B's entities
+- ⬜ GraphQL: A's view node exposes B's object as an A view type (e.g. `HogwartsWizardOverviewPerson`)
+- ⬜ Writes: linking and unlinking across models through A's REST API
+- ⬜ Live deploy (later): B's classloader visible to A's; redeploying B redeploys the models that depend on it
 - ⬜ Later, if models move to separate databases: reference by id checked by a rule, view links through the other
   model's API, GraphQL stitching or federation ❓
 
@@ -159,7 +168,8 @@ foreign key across schemas (`hogwarts.wizard.person_id → dcim.person.id`).
 | Incremental changelogs: generated diff vs. hand-written changesets | ❓ open |
 | Live deploy vs. restart | ❓ restart accepted for now |
 | Inter-model references: shared database, foreign keys across schemas | ✅ decided for the first version (separate databases and API calls later if needed) |
-| Inter-model references: read-only reference entity vs. dependency on the other model's jar | ❓ open |
+| Inter-model references: model A depends on model B's jar (entities, DAOs, services) and is deployed with it | ✅ decided (A's business logic needs B's DAOs and rules; a read-only copy of B's entity would not allow that) |
+| Inter-model references: B's public surface for other models | ❓ open |
 
 ---
 
