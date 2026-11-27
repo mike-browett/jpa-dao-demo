@@ -71,7 +71,7 @@ public class ProblemHandler {
         String detail = String.valueOf(e.getMostSpecificCause().getMessage());
         return constraints.stream()
                 .flatMap(c -> c.mappings().stream())
-                .filter(m -> detail.contains(m.constraint()))
+                .filter(m -> detail.contains("\"" + m.constraint() + "\""))   // PostgreSQL quotes the name
                 .findFirst()
                 .map(m -> problem(m.status(), m.code(), m.message()))
                 .orElseGet(() -> problem(HttpStatus.CONFLICT, "constraintViolation",

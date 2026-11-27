@@ -44,7 +44,7 @@ class HogwartsApiIntegrationTest {
             registry.add("spring.datasource.url", () -> TEST_DB_URL);
             registry.add("spring.datasource.username", () -> env("HOGWARTS_TEST_DB_USER", "hogwarts"));
             registry.add("spring.datasource.password", () -> env("HOGWARTS_TEST_DB_PASSWORD", "hogwarts"));
-            registry.add("spring.liquibase.drop-first", () -> "true");
+            registry.add("datastack.liquibase.drop-first", () -> "true");
         } else {
             PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
             postgres.start();
@@ -62,7 +62,7 @@ class HogwartsApiIntegrationTest {
     @BeforeEach
     void client() {
         api = RestClient.builder()
-                .baseUrl("http://localhost:" + port + "/api")
+                .baseUrl("http://localhost:" + port + "/api/hogwarts")
                 .defaultStatusHandler(status -> true, (request, response) -> { })   // assert statuses ourselves
                 .build();
     }

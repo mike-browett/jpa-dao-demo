@@ -98,11 +98,12 @@ The code is split into Gradle modules along the same line:
 
 | Module | Contents | Depends on |
 | --- | --- | --- |
-| `datastack-runtime` | `com.aixpertsoft.datastack`: the **framework** (`Dao`, `JpaDao`, `@Rule`, `RuleDispatcher`, `ProblemHandler`). Knows nothing about racks. A plain library, no Spring Boot. | JPA API, Spring context / web / orm |
+| `datastack-runtime` | `com.aixpertsoft.datastack`: the **framework** (`Dao`, `JpaDao`, `@Rule`, `RuleDispatcher`, `ProblemHandler`). Knows nothing about racks. A plain library; its optional Spring Boot auto-configuration (`boot` package) wires the runtime and hosts generated models. | JPA API, Spring context / web / orm |
 | `dcim-demo` | `com.aixpertsoft.dcim`: the **microservice** built on the runtime, plus the Spring Boot application | `datastack-runtime`, Spring Boot starters |
 | `datastack-generator` | `com.aixpertsoft.datastack.generator`: validates `model.json` and generates a microservice from it. Plain Java, no Spring. | Jackson |
 | `dcim-service` | The same microservice as `dcim-demo`, generated from `model/model.json`; only rules and custom code are hand-written | `datastack-runtime`, Spring Boot starters; `datastack-generator` at build time |
 | `hogwarts-service` | A second generated microservice (Harry Potter wizards and spells) with no hand-written twin | same as `dcim-service` |
+| `datastack-server` | Spring Boot server with no model of its own; hosts the model jars in `deployments/` | `datastack-runtime`, Spring Boot starters; models at runtime |
 
 Because they are separate modules, `dcim-demo` can only use what the runtime exposes, and the runtime cannot
 depend on any microservice by accident: the module boundary is checked by the compiler.
@@ -341,7 +342,54 @@ Building it surfaced a few generator and runtime gaps, now fixed for every model
 
 Each view costs 3 selects per request whatever the row count (root, count, one batched query per query link).
 
-## 10. Known simplifications (Phase 1 demo)
+## 10. Several models on one server
+
+Each generated model is namespaced by its id, so models can be deployed side by side:
+
+| | Namespace | Example (hogwarts) |
+| --- | --- | --- |
+| REST | `restBasePath` + `/` + id | `/api/hogwarts/wizards`, `/api/hogwarts/views/spell-book` |
+| GraphQL | `Query.<id>` returns `<Id>Query`, whose fields are the views; every type prefixed `<Id>` | `{ hogwarts { spellBook { ... } } }`, `HogwartsSpellBookCasters` |
+| Database | one schema per model (`database.schema`, default id), own Liquibase history | `hogwarts.wizard_spell` |
+| JPA | one mapping file per model, added to the shared persistence unit | `META-INF/datastack/hogwarts-orm.xml` |
+| Spring beans | model package scanned with fully qualified bean names | `com.aixpertsoft.hogwarts.service.WizardService` |
+| Resources | per-model folders | `db/changelog/hogwarts/`, `graphql-documents/hogwarts/` |
+
+**A model is a plug-in.** The generator writes `config/<Id>ModelConfiguration`, a Spring Boot
+auto-configuration listed in `META-INF/spring/...AutoConfiguration.imports`. Any Spring Boot application with
+the model jar on its classpath hosts the model. That configuration:
+
+- scans the model's package;
+- creates the schema and runs the model's Liquibase changelog in it;
+- registers its JPA mapping file;
+- publishes a `DatastackModel`.
+
+The runtime's own auto-configuration provides the base GraphQL `Query` type, merges the model schemas, and
+serves `GET /api` and `datastackModels` (the list of deployed models).
+
+```mermaid
+flowchart LR
+    subgraph server[datastack-server]
+      direction TB
+      rt[datastack-runtime<br/>DatastackAutoConfiguration]
+      h[hogwarts.jar<br/>HogwartsModelConfiguration]
+      d[dcim.jar<br/>DcimModelConfiguration]
+    end
+    h -->|/api/hogwarts, Query.hogwarts| api[(one port)]
+    d -->|/api/dcim, Query.dcim| api
+    h -->|schema hogwarts| db[(one database)]
+    d -->|schema dcim| db
+```
+
+**Deploy.** `./gradlew :<model>-service:deploy` copies the model's plain jar to `datastack-server/deployments`.
+`bootRun` (and the packaged server, via `PropertiesLauncher`) adds those jars to the classpath. Deploying or
+undeploying needs a restart for now. The standalone application class (`HogwartsApplication`) no longer scans
+anything: it relies on the same auto-configuration, so a model behaves the same alone and on the server.
+
+**Next step: live deploy.** Load each model in its own classloader and child context, and rebuild the GraphQL
+schema on deploy, so a model can be added, replaced or removed without restarting the server.
+
+## 11. Known simplifications (Phase 1 demo)
 
 - No security or ACL: all endpoints are open.
 - `BeforeSave` does not yet expose old values (`changed(attribute)` from the design doc). `NoContainmentCycle`
@@ -350,10 +398,12 @@ Each view costs 3 selects per request whatever the row count (root, count, one b
 - No jOOQ yet; all access is JPA.
 - No OpenAPI spec or TypeScript client yet.
 - Views are hard-wired to one REST endpoint each.
+- Database constraint names should be unique across models deployed together (error mapping matches the
+  name, which PostgreSQL reports without the schema).
 
 ---
 
-## 11. Open decisions
+## 12. Open decisions
 
 ### Inheritance strategy (decided for now: single table, revisit later)
 

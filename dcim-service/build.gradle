@@ -62,3 +62,27 @@ sourceSets {
         resources.srcDir(generateCode.map { generatedResources })
     }
 }
+
+// ---- deploy into datastack-server ----
+// The plain jar (tasks.jar) is the model as a plug-in: generated + custom classes, no Spring Boot loader.
+// Its application.yaml is left out, so the server's configuration wins.
+tasks.named('jar') {
+    exclude 'application.yaml'
+}
+
+def deployments = rootProject.layout.projectDirectory.dir('datastack-server/deployments')
+
+tasks.register('deploy', Copy) {
+    group = 'datastack'
+    description = 'Copies this model into datastack-server/deployments; restart the server to load it'
+    from tasks.named('jar')
+    into deployments
+    rename { 'dcim.jar' }
+    doLast { logger.lifecycle("Deployed dcim -> ${deployments.asFile}/dcim.jar (restart datastack-server)") }
+}
+
+tasks.register('undeploy', Delete) {
+    group = 'datastack'
+    description = 'Removes this model from datastack-server/deployments; restart the server to unload it'
+    delete deployments.file('dcim.jar')
+}

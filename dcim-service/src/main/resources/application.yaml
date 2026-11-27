@@ -14,8 +14,7 @@ spring:
     hibernate:
       ddl-auto: validate          # Liquibase owns the schema
 
-  liquibase:
-    change-log: classpath:db/changelog/db.changelog-master.yaml
+  # Liquibase runs per model, in the model's own schema (see the generated config/*ModelConfiguration).
 
   graphql:
     graphiql:

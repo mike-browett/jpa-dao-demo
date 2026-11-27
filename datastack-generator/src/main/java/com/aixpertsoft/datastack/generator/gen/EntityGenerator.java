@@ -15,7 +15,7 @@ import java.util.List;
  * <ul>
  *   <li>{@code RackBase} (generated): a @MappedSuperclass with every field, getter and setter from the model.</li>
  *   <li>{@code Rack} (owned, created once): the entity everyone uses; custom methods go here.</li>
- *   <li>{@code META-INF/orm.xml} (generated): which classes are entities, tables, inheritance, discriminators.
+ *   <li>{@code META-INF/datastack/<model>-orm.xml} (generated): which classes are entities, tables, inheritance, discriminators.
  *       Keeping that out of the owned classes means a model change never makes them stale.</li>
  * </ul>
  */
@@ -213,6 +213,11 @@ public final class EntityGenerator {
         out.generatedJava(pkg, name, s.render(Output.GENERATED));
     }
 
+    /** One mapping file per model (not META-INF/orm.xml, of which JPA only reads one). */
+    public static String ormPath(ModelIndex index) {
+        return "META-INF/datastack/" + index.id() + "-orm.xml";
+    }
+
     private void ormXml() {
         StringBuilder x = new StringBuilder("""
                 <?xml version="1.0" encoding="UTF-8"?>
@@ -222,11 +227,12 @@ public final class EntityGenerator {
                                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                                  xsi:schemaLocation="https://jakarta.ee/xml/ns/persistence/orm https://jakarta.ee/xml/ns/persistence/orm/orm_3_1.xsd"
                                  version="3.1">
-                """);
+                    <!-- Every table is in schema %s: one schema per model. -->
+                """.formatted(index.schema()));
         for (Entity e : index.entities()) {
             x.append("    <entity class=\"").append(pkg).append('.').append(e.name()).append("\">\n");
             if (index.isRoot(e)) {
-                x.append("        <table name=\"").append(e.def().table()).append("\"/>\n");
+                x.append("        <table name=\"").append(e.def().table()).append("\" schema=\"").append(index.schema()).append("\"/>\n");
             }
             if (index.hasDiscriminator(e)) {
                 if (index.isRoot(e)) x.append("        <inheritance strategy=\"SINGLE_TABLE\"/>\n");
@@ -239,6 +245,6 @@ public final class EntityGenerator {
             x.append("    </entity>\n");
         }
         x.append("</entity-mappings>\n");
-        out.generatedResource("META-INF/orm.xml", x.toString());
+        out.generatedResource(ormPath(index), x.toString());
     }
 }

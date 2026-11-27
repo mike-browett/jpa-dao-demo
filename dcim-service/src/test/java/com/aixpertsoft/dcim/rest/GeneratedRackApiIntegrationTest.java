@@ -44,7 +44,7 @@ class GeneratedRackApiIntegrationTest {
             registry.add("spring.datasource.url", () -> TEST_DB_URL);
             registry.add("spring.datasource.username", () -> env("DCIM_TEST_DB_USER", "dcim"));
             registry.add("spring.datasource.password", () -> env("DCIM_TEST_DB_PASSWORD", "dcim"));
-            registry.add("spring.liquibase.drop-first", () -> "true");
+            registry.add("datastack.liquibase.drop-first", () -> "true");
         } else {
             PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
             postgres.start();
@@ -62,7 +62,7 @@ class GeneratedRackApiIntegrationTest {
     @BeforeEach
     void client() {
         api = RestClient.builder()
-                .baseUrl("http://localhost:" + port + "/api")
+                .baseUrl("http://localhost:" + port + "/api/dcim")
                 .defaultStatusHandler(status -> true, (request, response) -> { })   // assert statuses ourselves
                 .build();
     }

@@ -3,10 +3,16 @@
 package com.aixpertsoft.hogwarts;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 
-/** The hogwarts microservice. Scans the data stack runtime and this model's package. */
-@SpringBootApplication(scanBasePackages = {"com.aixpertsoft.datastack", "com.aixpertsoft.hogwarts"})
+/**
+ * Runs the hogwarts model on its own. It deliberately does no component scan: the model's beans come
+ * from the generated HogwartsModelConfiguration (an auto-configuration), exactly as when the jar
+ * is deployed into datastack-server next to other models.
+ */
+@SpringBootConfiguration
+@EnableAutoConfiguration
 public class HogwartsApplication {
 
     public static void main(String[] args) {

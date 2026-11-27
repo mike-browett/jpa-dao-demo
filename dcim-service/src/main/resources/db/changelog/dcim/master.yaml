@@ -1,7 +1,8 @@
 # Created once by datastack-generator. This file is yours.
 # The generated changelog comes from model.json; hand-written changesets go in custom.sql.
+# Liquibase runs it with default schema dcim.
 databaseChangeLog:
   - include:
-      file: db/changelog/generated/hogwarts.sql
+      file: db/changelog/dcim/generated.sql
   - include:
-      file: db/changelog/custom.sql
+      file: db/changelog/dcim/custom.sql

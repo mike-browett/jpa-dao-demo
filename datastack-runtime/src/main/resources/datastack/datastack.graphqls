@@ -1,0 +1,15 @@
+# Base schema of the data stack: generated models add their own field to Query with "extend type Query".
+type Query {
+  "Models deployed on this server"
+  datastackModels: [DatastackModel!]!
+}
+
+type DatastackModel {
+  id: String!
+  version: String
+  "REST base path, e.g. /api/hogwarts"
+  rest: String!
+  "Query field holding the model's views"
+  graphql: String!
+  schema: String!
+}

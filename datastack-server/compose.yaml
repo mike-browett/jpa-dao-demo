@@ -1,0 +1,11 @@
+# PostgreSQL for datastack-server. Spring Boot starts it automatically on bootRun.
+# One database for all models: each model has its own schema.
+services:
+  postgres:
+    image: 'postgres:16'
+    environment:
+      POSTGRES_DB: datastack
+      POSTGRES_USER: datastack
+      POSTGRES_PASSWORD: datastack
+    ports:
+      - '15435:5432'

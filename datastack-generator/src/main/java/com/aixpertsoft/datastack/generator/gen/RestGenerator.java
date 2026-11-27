@@ -37,7 +37,7 @@ public final class RestGenerator {
         String service = s.type(index.pkg("service") + "." + e.name() + "Service");
         String dto = s.type(index.pkg("api") + "." + DtoGenerator.dtoName(index, e));
         String requests = s.type(index.pkg("api") + "." + e.name() + "Requests");
-        String path = index.model().restBasePath() + "/" + rest.path();
+        String path = index.restBase() + "/" + rest.path();
 
         s.line("/** Generated endpoints for " + e.name() + " at " + path + ". Add endpoints in " + e.name() + "Controller. */");
         s.line("@RequestMapping(\"" + path + "\")");

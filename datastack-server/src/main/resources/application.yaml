@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: datastack-server
+
+  # Used when PostgreSQL is not started through Docker Compose. One database, one schema per model.
+  datasource:
+    url: ${DATASTACK_DB_URL:jdbc:postgresql://localhost:5432/datastack}
+    username: ${DATASTACK_DB_USER:datastack}
+    password: ${DATASTACK_DB_PASSWORD:datastack}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # each model's Liquibase owns its schema
+
+  graphql:
+    graphiql:
+      enabled: true
+
+  docker:
+    compose:
+      lifecycle-management: start-only
+
+# Models with demo data (hogwarts, dcim) load it into an empty schema.
+demo:
+  seed: true

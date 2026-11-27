@@ -1,0 +1,41 @@
+// One server for many models. It contains no model itself: every jar in deployments/ is a model
+// (put there by ./gradlew :<model>-service:deploy) and is picked up through its auto-configuration.
+//
+//   ./gradlew :hogwarts-service:deploy :dcim-service:deploy   deploy models (or ./gradlew deploy for all)
+//   ./gradlew :datastack-server:bootRun                       start, or restart to pick up changes
+//   ./gradlew :hogwarts-service:undeploy                      remove a model
+plugins {
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+}
+
+description = 'Spring Boot server hosting the models deployed in deployments/'
+
+dependencies {
+    // What every model needs at runtime. Models bring only their own classes and resources.
+    implementation project(':datastack-runtime')
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-graphql'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-liquibase'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
+}
+
+def deployments = layout.projectDirectory.dir('deployments')
+
+// bootRun: the deployed model jars are added to the classpath when the task runs (not when Gradle configures).
+tasks.named('bootRun') {
+    classpath(fileTree(deployments) { include '*.jar' })
+    inputs.files(fileTree(deployments) { include '*.jar' })
+}
+
+// Packaged server: java -jar datastack-server.jar loads model jars from ./deployments (PropertiesLauncher).
+tasks.named('bootJar') {
+    manifest {
+        attributes 'Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher',
+                   'Loader-Path': 'deployments'
+    }
+}

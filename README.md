@@ -25,6 +25,7 @@ The code is split into four Gradle modules:
 | `datastack-generator` | The code generator: validates a `model.json` and generates a microservice from it |
 | `dcim-service` | The same microservice, **generated** from [`dcim-service/model/model.json`](dcim-service/model/model.json) plus hand-written rules. See [its README](dcim-service/README.md) |
 | `hogwarts-service` | A second generated microservice with a friendlier model: Harry Potter wizards, houses and spells, a many-to-many with attributes (`level` 1–9, `favourite`) and demo data from the books. See [its README](hogwarts-service/README.md) |
+| `datastack-server` | One server hosting several models: `./gradlew :hogwarts-service:deploy :dcim-service:deploy`, then `./gradlew :datastack-server:bootRun`. Each model keeps its own REST paths (`/api/<model>/...`), GraphQL namespace and database schema. See [its README](datastack-server/README.md) |
 
 How the pieces fit together is explained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -263,6 +264,10 @@ hogwarts-service/                Wizards and Spells, generated (same layout as d
   compose.yaml                   PostgreSQL for hogwarts-service (port 15434)
   requests.http                  walk-through of its API
 
+datastack-server/                one Spring Boot server for many models
+  deployments/                   model jars, copied by ./gradlew :<model>-service:deploy (not committed)
+  compose.yaml                   PostgreSQL for the server (port 15435), one schema per model
+
 test/postman/                    Postman collection testing the running API
 requests.http                    walk-through of the API
 ```
@@ -275,6 +280,15 @@ requests.http                    walk-through of the API
 ./gradlew :dcim-service:generateCode      # validate the model, regenerate build/generated/datastack
 ./gradlew :dcim-service:bootRun           # generate, compile and run (PostgreSQL on port 15433)
 ./gradlew :hogwarts-service:bootRun       # the Harry Potter model (PostgreSQL on port 15434)
+```
+
+Generated models are namespaced by their id: REST `/api/dcim/...`, GraphQL `{ dcim { ... } }`, database
+schema `dcim`. That lets several models share one server:
+
+```bash
+./gradlew deploy                          # copy every model into datastack-server/deployments
+./gradlew :datastack-server:bootRun       # one server, all deployed models (PostgreSQL on port 15435)
+curl http://localhost:8080/api            # the deployed models
 ```
 
 To only check a model:

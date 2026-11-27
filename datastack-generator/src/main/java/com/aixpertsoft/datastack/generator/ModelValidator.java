@@ -26,6 +26,10 @@ public class ModelValidator {
     public List<String> validate(Model model, Path modelDir) {
         List<String> problems = new ArrayList<>();
         if (blank(model.id())) problems.add("model: \"id\" is missing");
+        else if (!model.id().matches("[a-z][a-z0-9]*")) {
+            problems.add("model: \"id\" must be lower case letters and digits (it is the REST path, GraphQL field and "
+                    + "database schema of the model): " + model.id());
+        }
         if (blank(model.javaPackage())) problems.add("model: \"javaPackage\" is missing");
 
         unique("object", model.objects(), ObjectDef::id, problems);

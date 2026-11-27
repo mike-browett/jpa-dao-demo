@@ -2,7 +2,7 @@
 ### Open in VS Code with the "REST Client" extension (or IntelliJ) and click "Send Request".
 ### Run them top to bottom: later requests reuse ids from earlier responses.
 
-@api = http://localhost:8080/api
+@api = http://localhost:8080/api/hogwarts
 
 ### 1. Wizard overview: house, wand, spells (favourite first) with spell details
 # @name harry
@@ -18,11 +18,11 @@ GET {{api}}/views/spell-book?name=%25curse
 ### 4. House roster: students and professors (same table, discriminator "type")
 GET {{api}}/views/house-roster
 
-### 5. The same data through GraphQL, choosing the fields
+### 5. The same data through GraphQL, choosing the fields (views live under the model's namespace, Query.hogwarts)
 POST http://localhost:8080/graphql
 Content-Type: application/json
 
-{ "query": "{ wizardOverview(nameLike: \"%Weasley\") { items { name patronus house { name } spells { level favourite spell { incantation } } } } }" }
+{ "query": "{ hogwarts { wizardOverview(nameLike: \"%Weasley\") { items { name patronus house { name } spells { level favourite spell { incantation } } } } } }" }
 
 ### 6. Harry's favourite becomes the Patronus Charm: the SingleFavouriteSpell rule demotes Expelliarmus
 PATCH {{api}}/wizards/{{harry.response.body.$.items[0].id}}/spells/{{patronus.response.body.$.items[0].id}}

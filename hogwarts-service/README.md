@@ -35,13 +35,13 @@ erDiagram
 
 | View | REST | Shape | SQL |
 | --- | --- | --- | --- |
-| `WizardOverview` | `/api/views/wizard-overview?name=%harry%` | wizard → house (path link) → spells (batched query link) → spell (path link) | 3 selects |
-| `SpellBook` | `/api/views/spell-book?name=avada%` | spell → casters → wizard → house: the many-to-many read from the other side | 3 selects |
-| `HouseRoster` | `/api/views/house-roster` | house → members, professors and students mixed | 3 selects |
+| `WizardOverview` | `/api/hogwarts/views/wizard-overview?name=%harry%` | wizard → house (path link) → spells (batched query link) → spell (path link) | 3 selects |
+| `SpellBook` | `/api/hogwarts/views/spell-book?name=avada%` | spell → casters → wizard → house: the many-to-many read from the other side | 3 selects |
+| `HouseRoster` | `/api/hogwarts/views/house-roster` | house → members, professors and students mixed | 3 selects |
 
 The SQL count is per request, whatever the number of rows: root query, count, one batched query per query link.
-Each view is also a GraphQL query field (`wizardOverview`, `spellBook`, `houseRoster`) at `/graphql`
-(GraphiQL at `/graphiql`).
+Each view is also a GraphQL field in the model's namespace, `{ hogwarts { wizardOverview { ... } } }`, at
+`/graphql` (GraphiQL at `/graphiql`). GraphQL types are prefixed `Hogwarts`; tables live in schema `hogwarts`.
 
 ## Custom code
 
@@ -56,19 +56,22 @@ Each view is also a GraphQL query field (`wizardOverview`, `spellBook`, `houseRo
 
 ```bash
 ./gradlew :hogwarts-service:bootRun      # starts PostgreSQL from compose.yaml (port 15434), generates, compiles, runs
-curl "http://localhost:8080/api/views/wizard-overview?name=%25harry%25"
+curl "http://localhost:8080/api/hogwarts/views/wizard-overview?name=%25harry%25"
 ```
 
 Without Docker, create a database `hogwarts` (user and password `hogwarts`) and run with
 `SPRING_DOCKER_COMPOSE_ENABLED=false`. Next to the other services, change the port:
 `SERVER_PORT=8083 ./gradlew :hogwarts-service:bootRun`.
 
+To run it next to other models on one server instead: `./gradlew :hogwarts-service:deploy`, then start
+[`datastack-server`](../datastack-server/README.md).
+
 [`requests.http`](requests.http) walks through the API: views, GraphQL, the favourite swap and every error.
 
 ## Try the rules
 
 ```bash
-B=http://localhost:8080/api
+B=http://localhost:8080/api/hogwarts
 # Neville tries the Cruciatus Curse at level 3
 curl -X POST -H 'Content-Type: application/json' -d '{"spellId":"<crucio-id>","level":3}' $B/wizards/<neville-id>/spells
 # -> 422 {"code":"hogwarts.unforgivableTooWeak","detail":"Cruciatus Curse needs level 7 or more: you need to really mean it"}

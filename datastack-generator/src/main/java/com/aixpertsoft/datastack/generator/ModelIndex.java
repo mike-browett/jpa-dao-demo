@@ -50,6 +50,34 @@ public final class ModelIndex {
         return model;
     }
 
+    /**
+     * The model's namespace, so several models can run in one server: REST {@link #restBase()},
+     * GraphQL field {@link #graphqlField()} and types prefixed with {@link #graphqlPrefix()}, database {@link #schema()}.
+     */
+    public String id() {
+        return model.id();
+    }
+
+    /** REST base path of the model, e.g. /api/hogwarts. */
+    public String restBase() {
+        return model.restBasePath() + "/" + model.id();
+    }
+
+    /** Database schema of the model's tables (model id unless "database.schema" says otherwise). */
+    public String schema() {
+        return model.database().schema() != null ? model.database().schema() : model.id();
+    }
+
+    /** Query field holding the model's views: Query.hogwarts. */
+    public String graphqlField() {
+        return model.id();
+    }
+
+    /** Prefix of every GraphQL type of the model, so type names never clash between models: Hogwarts... */
+    public String graphqlPrefix() {
+        return Names.upper(model.id());
+    }
+
     public String pkg() {
         return model.javaPackage();
     }

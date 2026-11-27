@@ -21,15 +21,18 @@ public record Model(String id,
         restBasePath = restBasePath != null ? restBasePath : "/api";
         dependsOn = orEmpty(dependsOn);
         include = orEmpty(include);
-        database = database != null ? database : new Database(true);
+        database = database != null ? database : new Database(true, null);
         objects = orEmpty(objects);
         relations = orEmpty(relations);
         views = orEmpty(views);
     }
 
-    /** "changelog": generate the Liquibase changelog (false when the schema is managed elsewhere). */
+    /**
+     * "changelog": generate the Liquibase changelog (false when the schema is managed elsewhere).
+     * "schema": database schema of the model's tables; defaults to the model id.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Database(Boolean changelog) {
+    public record Database(Boolean changelog, String schema) {
         public boolean generateChangelog() {
             return changelog == null || changelog;
         }

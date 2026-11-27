@@ -13,12 +13,15 @@ The same Rack / Component / Person service as `dcim-demo`, but most of the code 
 
 ```bash
 ./gradlew :dcim-service:bootRun          # starts PostgreSQL from compose.yaml (port 15433), generates, compiles, runs
-curl http://localhost:8080/api/views/rack-overview
+curl http://localhost:8080/api/dcim/views/rack-overview
 ```
 
 Without Docker, create a database `dcim` (user and password `dcim`) and run with
 `SPRING_DOCKER_COMPOSE_ENABLED=false`. To run it next to `dcim-demo`, give one of them another port
 (`--args='--server.port=8081'`).
+
+Every path is namespaced with the model id, so the same jar can run next to other models in
+[`datastack-server`](../datastack-server/README.md): `./gradlew :dcim-service:deploy`.
 
 ## The development loop
 
@@ -51,16 +54,17 @@ controllers (`RackControllerBase` / `RackController`). Everything else is genera
 
 | What | Files |
 | --- | --- |
-| Liquibase changelog | `resources/db/changelog/generated/dcim.sql`: tables, checks, unique and exclusion constraints, FKs, indexes |
-| JPA mapping | `resources/META-INF/orm.xml` (entities, tables, inheritance, discriminators) and `entity/*Base.java` (fields) |
+| Liquibase changelog | `resources/db/changelog/dcim/generated.sql`: tables in schema `dcim`, checks, unique and exclusion constraints, FKs, indexes |
+| JPA mapping | `resources/META-INF/datastack/dcim-orm.xml` (entities, tables, inheritance, discriminators) and `entity/*Base.java` (fields) |
 | JSON attributes, enums | `entity/PersonExt.java` (content of the `jsonb` column), `PersonContact.java`, `PersonType.java` |
 | DAOs | `dao/*DaoBase.java`: CRUD plus `findByRack`, `findByRackIds`, `countByRack`, link lookups |
 | API records | `api/*Dto.java`, `api/*Requests.java` (with validation from the model) |
 | Services | `service/*ServiceBase.java`: CRUD, delete checks, relationship operations, error codes |
 | REST | `rest/*ControllerBase.java`: CRUD and relationship endpoints |
-| Views | `view/*`: records per graph node, JPQL view service, GraphQL resolvers, `ViewsController` |
-| GraphQL | `resources/graphql/dcim.graphqls`, `resources/graphql-documents/RackOverview.graphql` |
+| Views | `view/*`: records per graph node, JPQL view service, GraphQL resolvers, `DcimQueryController`, `DcimViewsController` |
+| GraphQL | `resources/datastack/graphql/dcim.graphqls` (`Query.dcim`, types prefixed `Dcim`), `resources/graphql-documents/dcim/RackOverview.graphql` |
 | Error codes | `config/DcimConstraints.java`: database constraint → error code |
+| Plug-in | `config/DcimModelConfiguration.java` + `META-INF/spring/...AutoConfiguration.imports`: component scan, Liquibase in schema `dcim`, mapping file, model registration |
 
 **Created once, then yours** (committed, never overwritten; delete a file to get a fresh one):
 
@@ -70,8 +74,8 @@ controllers (`RackControllerBase` / `RackController`). Everything else is genera
 | `dao/*Dao.java` | Custom queries (see `RackAdministratorDao.findByRackAndPrimary`) |
 | `service/*Service.java` | Overriding or adding use cases |
 | `rest/*Controller.java` | Extra endpoints (paths start at the generated mapping) |
-| `DcimApplication.java`, `application.yaml` | Application settings |
-| `db/changelog/db.changelog-master.yaml`, `custom.sql` | Hand-written changesets |
+| `DcimApplication.java`, `application.yaml` | Running the model on its own (not part of a deployed jar) |
+| `db/changelog/dcim/master.yaml`, `custom.sql` | Hand-written changesets (qualify tables: `dcim.<table>`) |
 
 **Fully custom** (the generator does not know about them):
 
@@ -79,7 +83,7 @@ controllers (`RackControllerBase` / `RackController`). Everything else is genera
 - `demo/DemoData.java`: demo data created through the generated services
 
 Entity classes you own carry **no JPA annotations**: tables, inheritance and discriminators come from the
-generated `orm.xml`. That way a model change never leaves an owned class out of date.
+generated mapping file (`dcim-orm.xml`). That way a model change never leaves an owned class out of date.
 
 ## What the model describes
 
@@ -87,7 +91,7 @@ generated `orm.xml`. That way a model change never leaves an owned class out of 
 objects      Component (table component, single-table inheritance), Rack extends Component, Person
 relations    RackChildren       Rack.children 1-to-N Component.rack     -> FK, PUT/DELETE /racks/{id}/children/{componentId}
              RackAdministrator  Rack.administrators M-to-N Person         -> intersection entity, GET/POST/PATCH/DELETE /racks/{id}/administrators
-views        RackOverview       Rack + children + administrators.person -> GraphQL type, /api/views/rack-overview
+views        RackOverview       Rack + children + administrators.person -> GraphQL Query.dcim.rackOverview, /api/dcim/views/rack-overview
 ```
 
 A **view** is a root JPQL query plus links:

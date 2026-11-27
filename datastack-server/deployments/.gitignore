@@ -1,0 +1,2 @@
+# Model jars copied here by ./gradlew :<model>-service:deploy. Not committed.
+*.jar

@@ -1,4 +1,6 @@
 // The reusable framework. A plain library: no Spring Boot plugin, no main class.
+// With Spring Boot on the classpath, its auto-configuration (package boot) registers the runtime beans and the
+// GraphQL base schema of all generated models on the classpath.
 plugins {
     id 'java-library'
 }
@@ -17,4 +19,11 @@ dependencies {
     implementation 'org.springframework:spring-orm'
     implementation 'org.springframework:spring-web'
     implementation 'org.slf4j:slf4j-api'
+
+    // Spring Boot integration (com.aixpertsoft.datastack.boot): only active when the application uses Spring Boot,
+    // so the runtime itself stays a plain library. Applications bring these through their starters.
+    compileOnly 'org.springframework.boot:spring-boot-autoconfigure'
+    compileOnly 'org.springframework.boot:spring-boot-graphql'
+    compileOnly 'org.springframework.graphql:spring-graphql'
+    compileOnly 'org.springframework:spring-webmvc'
 }

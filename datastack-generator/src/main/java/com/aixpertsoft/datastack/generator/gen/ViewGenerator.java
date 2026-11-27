@@ -20,15 +20,18 @@ import java.util.Map;
  * <ul>
  *   <li>records for every node of the graph (RackOverviewNode, RackOverviewChildrenNode, ...)</li>
  *   <li>a view service: the root JPQL query, one batched JPQL query per query link</li>
- *   <li>GraphQL types, a query field and @BatchMapping resolvers</li>
- *   <li>a stored GraphQL document and a REST endpoint /api/views/{path} that runs it</li>
+ *   <li>GraphQL types, a field of the model's namespace type and @BatchMapping resolvers</li>
+ *   <li>a stored GraphQL document and a REST endpoint /api/{model}/views/{path} that runs it</li>
  * </ul>
+ * GraphQL is namespaced so several models can share one schema: Query.{model} returns {Model}Query, whose fields
+ * are the views, and every type name starts with {Model}.
  */
 public final class ViewGenerator {
 
     private final ModelIndex index;
     private final Output out;
     private final String pkg;
+    private final String prefix;
     private final StringBuilder schema = new StringBuilder();
     private final Map<String, String> enums = new LinkedHashMap<>();
     private final Map<String, AttributeDef> jsonTypes = new LinkedHashMap<>();
@@ -38,6 +41,7 @@ public final class ViewGenerator {
         this.index = index;
         this.out = out;
         this.pkg = index.pkg("view");
+        this.prefix = index.graphqlPrefix();
     }
 
     public void generate() {
@@ -46,6 +50,7 @@ public final class ViewGenerator {
             view(v);
         }
         schema();
+        namespaceController();
         restController();
     }
 
@@ -55,6 +60,15 @@ public final class ViewGenerator {
         StringBuilder n = new StringBuilder(v.id());
         path.forEach(p -> n.append(upper(p)));
         return n.toString();
+    }
+
+    /** GraphQL type of a node, prefixed with the model: HogwartsWizardOverview. */
+    private String gql(String type) {
+        return prefix + type;
+    }
+
+    private String namespaceType() {
+        return prefix + "Query";
     }
 
     private static String fieldName(ViewDef v) {
@@ -69,13 +83,13 @@ public final class ViewGenerator {
         service(v, nodes);
         graphQlController(v, nodes);
         nodes.forEach(n -> schemaType(n));
-        schema.append("type ").append(v.id()).append("Page {\n  page: Int!\n  size: Int!\n  total: Int\n  items: [")
-              .append(v.id()).append("!]!\n}\n\n");
+        schema.append("type ").append(gql(v.id())).append("Page {\n  page: Int!\n  size: Int!\n  total: Int\n  items: [")
+              .append(gql(v.id())).append("!]!\n}\n\n");
         List<String> args = new ArrayList<>(List.of("page: Int = 0", "size: Int = 20"));
         for (Parameter p : v.root().parameters()) {
             args.add(p.name() + ": " + Types.graphql(p.type()) + (p.defaultValue() != null ? " = " + graphqlLiteral(p.defaultValue()) : ""));
         }
-        queryFields.add("  \"View " + v.id() + "\"\n  " + fieldName(v) + "(" + String.join(", ", args) + "): " + v.id() + "Page!");
+        queryFields.add("  \"View " + v.id() + "\"\n  " + fieldName(v) + "(" + String.join(", ", args) + "): " + gql(v.id()) + "Page!");
         document(v);
     }
 
@@ -128,10 +142,10 @@ public final class ViewGenerator {
         String bang = a.isRequired() && !onSubtype ? "!" : "";
         String gql;
         if ("enum".equals(a.type())) {
-            gql = index.enumType(owner, a);
+            gql = prefix + index.enumType(owner, a);
             enums.put(gql, String.join("\n  ", a.values()));
         } else if ("object".equals(a.type())) {
-            gql = index.jsonType(owner, a);
+            gql = prefix + index.jsonType(owner, a);
             jsonTypes.put(gql, a);
         } else {
             gql = Types.graphql(a.type());
@@ -259,7 +273,7 @@ public final class ViewGenerator {
     private void graphQlController(ViewDef v, List<NodeInfo> nodes) {
         Src s = new Src(pkg);
         s.imports("org.springframework.stereotype.Controller", "org.springframework.graphql.data.method.annotation.Argument",
-                "org.springframework.graphql.data.method.annotation.QueryMapping",
+                "org.springframework.graphql.data.method.annotation.SchemaMapping",
                 "com.aixpertsoft.datastack.web.Paging");
         String service = v.id() + "ViewService";
         String name = v.id() + "GraphQlController";
@@ -280,7 +294,7 @@ public final class ViewGenerator {
             String fallback = p.defaultValue() != null ? Types.javaLiteral(p.type(), p.defaultValue()) : null;
             args.add(fallback != null ? p.name() + " != null ? " + p.name() + " : " + fallback : p.name());
         }
-        s.line("    @QueryMapping");
+        s.line("    @SchemaMapping(typeName = \"" + namespaceType() + "\", field = \"" + fieldName(v) + "\")");
         s.line("    public " + v.id() + "Page " + fieldName(v) + "(" + String.join(", ", params) + ") {");
         s.line("        return view.root(" + String.join(", ", args) + ");");
         s.line("    }");
@@ -288,7 +302,7 @@ public final class ViewGenerator {
             if (n.node().isQueryLink()) {
                 s.imports("org.springframework.graphql.data.method.annotation.BatchMapping", "java.util.List", "java.util.Map");
                 s.line();
-                s.line("    @BatchMapping(typeName = \"" + n.parent().type() + "\", field = \"" + n.node().name() + "\")");
+                s.line("    @BatchMapping(typeName = \"" + gql(n.parent().type()) + "\", field = \"" + n.node().name() + "\")");
                 s.line("    public Map<" + n.parent().record() + ", List<" + n.record() + ">> " + lower(n.type()) + "(List<"
                         + n.parent().record() + "> parents) {");
                 s.line("        return view." + lower(n.type()) + "(parents);");
@@ -302,13 +316,13 @@ public final class ViewGenerator {
     private void schemaType(NodeInfo n) {
         Src scratch = new Src(pkg);
         schema.append("\"").append(n.entity().name()).append(" in view ").append(n.type()).append("\"\n");
-        schema.append("type ").append(n.type()).append(" {\n");
+        schema.append("type ").append(gql(n.type())).append(" {\n");
         for (String f : n.node().fields()) {
             Field field = field(n.entity(), f, scratch);
             schema.append("  ").append(field.name()).append(": ").append(field.graphqlType()).append('\n');
         }
         for (Node link : n.node().links()) {
-            String sub = n.type() + upper(link.name());
+            String sub = gql(n.type() + upper(link.name()));
             if (link.isQueryLink()) {
                 schema.append("  ").append(link.name()).append(": [").append(sub).append("!]!\n");
             } else {
@@ -321,10 +335,15 @@ public final class ViewGenerator {
     private void schema() {
         StringBuilder full = new StringBuilder("""
                 # GENERATED by datastack-generator from model.json. Do not edit.
-                # Read model: one query field and one set of types per view. Writes go through the REST API.
+                # Read model: one field per view in the model's namespace, Query.%1$s. Writes go through the REST API.
 
-                type Query {
-                """);
+                extend type Query {
+                  "Views of model %1$s"
+                  %1$s: %2$s!
+                }
+
+                type %2$s {
+                """.formatted(index.graphqlField(), namespaceType()));
         full.append(String.join("\n", queryFields)).append("\n}\n\n");
         full.append(schema);
         enums.forEach((name, values) -> full.append("enum ").append(name).append(" {\n  ").append(values).append("\n}\n\n"));
@@ -333,7 +352,37 @@ public final class ViewGenerator {
             a.properties().forEach(p -> full.append("  ").append(p.name()).append(": ").append(Types.graphql(p.type())).append('\n'));
             full.append("}\n\n");
         });
-        out.generatedResource("graphql/" + index.model().id() + ".graphqls", full.toString().stripTrailing() + "\n");
+        out.generatedResource(schemaPath(index), full.toString().stripTrailing() + "\n");
+    }
+
+    /** Picked up by the runtime's auto-configuration (DatastackAutoConfiguration.MODEL_SCHEMAS). */
+    public static String schemaPath(ModelIndex index) {
+        return "datastack/graphql/" + index.id() + ".graphqls";
+    }
+
+    private String documentPath(ViewDef v) {
+        return "graphql-documents/" + index.id() + "/" + v.id() + ".graphql";
+    }
+
+    /** Query.{model}: the namespace object. Its fields (the views) are resolved by the view controllers. */
+    private void namespaceController() {
+        Src s = new Src(pkg);
+        s.imports("org.springframework.stereotype.Controller", "org.springframework.graphql.data.method.annotation.QueryMapping");
+        String name = prefix + "QueryController";
+        s.line("/** GraphQL namespace of model " + index.id() + ": Query." + index.graphqlField() + " returns " + namespaceType() + ". */");
+        s.line("@Controller");
+        s.line("public class " + name + " {");
+        s.line();
+        s.line("    /** The namespace object; it carries no data, its fields are the views. */");
+        s.line("    public record " + namespaceType() + "() {");
+        s.line("    }");
+        s.line();
+        s.line("    @QueryMapping(name = \"" + index.graphqlField() + "\")");
+        s.line("    public " + namespaceType() + " " + index.graphqlField() + "() {");
+        s.line("        return new " + namespaceType() + "();");
+        s.line("    }");
+        s.line("}");
+        out.generatedJava(pkg, name, s.render(Output.GENERATED));
     }
 
     private void document(ViewDef v) {
@@ -345,11 +394,12 @@ public final class ViewGenerator {
         }
         StringBuilder d = new StringBuilder("# GENERATED by datastack-generator: the full selection of view " + v.id() + ".\n");
         d.append("query ").append(v.id()).append("(").append(String.join(", ", vars)).append(") {\n");
-        d.append("  ").append(fieldName(v)).append("(").append(String.join(", ", args)).append(") {\n");
-        d.append("    page\n    size\n    total\n    items {\n");
-        selection(v.root(), index.entity(v.root().object()), "      ", d);
-        d.append("    }\n  }\n}\n");
-        out.generatedResource("graphql-documents/" + v.id() + ".graphql", d.toString());
+        d.append("  ").append(index.graphqlField()).append(" {\n");
+        d.append("    ").append(fieldName(v)).append("(").append(String.join(", ", args)).append(") {\n");
+        d.append("      page\n      size\n      total\n      items {\n");
+        selection(v.root(), index.entity(v.root().object()), "        ", d);
+        d.append("      }\n    }\n  }\n}\n");
+        out.generatedResource(documentPath(v), d.toString());
     }
 
     private void selection(Node node, Entity e, String indent, StringBuilder d) {
@@ -383,12 +433,13 @@ public final class ViewGenerator {
                 "java.util.HashMap", "java.util.Map", "java.util.UUID");
         s.line("/** Every view as plain REST: runs the view's stored GraphQL document in-process and returns the page. */");
         s.line("@RestController");
-        s.line("@RequestMapping(\"" + index.model().restBasePath() + "/views\")");
-        s.line("public class ViewsController {");
+        String name = prefix + "ViewsController";
+        s.line("@RequestMapping(\"" + index.restBase() + "/views\")");
+        s.line("public class " + name + " {");
         s.line();
         s.line("    private final ExecutionGraphQlService graphQl;");
         s.line();
-        s.line("    public ViewsController(ExecutionGraphQlService graphQl) {");
+        s.line("    public " + name + "(ExecutionGraphQlService graphQl) {");
         s.line("        this.graphQl = graphQl;");
         s.line("    }");
         for (ViewDef v : index.model().views()) {
@@ -408,11 +459,11 @@ public final class ViewGenerator {
             for (Parameter p : v.root().parameters()) {
                 s.line("        variables.put(\"" + p.name() + "\", " + p.name() + ");");
             }
-            s.line("        return run(\"graphql-documents/" + v.id() + ".graphql\", \"" + v.id() + "\", variables).get(\""
-                    + fieldName(v) + "\");");
+            s.line("        return run(\"" + documentPath(v) + "\", \"" + v.id() + "\", variables).get(\"" + fieldName(v) + "\");");
             s.line("    }");
         }
         s.line();
+        s.line("    @SuppressWarnings(\"unchecked\")");
         s.line("    private Map<String, Object> run(String document, String operation, Map<String, Object> variables) {");
         s.line("        var request = new DefaultExecutionGraphQlRequest(load(document), operation, variables, null,");
         s.line("                UUID.randomUUID().toString(), null);");
@@ -421,7 +472,8 @@ public final class ViewGenerator {
         s.line("            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, \"viewFailed\",");
         s.line("                    \"View \" + operation + \" failed: \" + (response == null ? \"no response\" : response.getErrors()));");
         s.line("        }");
-        s.line("        return response.getData();");
+        s.line("        Map<String, Object> data = response.getData();");
+        s.line("        return (Map<String, Object>) data.get(\"" + index.graphqlField() + "\");");
         s.line("    }");
         s.line();
         s.line("    private static String load(String path) {");
@@ -432,7 +484,7 @@ public final class ViewGenerator {
         s.line("        }");
         s.line("    }");
         s.line("}");
-        out.generatedJava(pkg, "ViewsController", s.render(Output.GENERATED));
+        out.generatedJava(pkg, name, s.render(Output.GENERATED));
     }
 
     // ---- helpers ----
