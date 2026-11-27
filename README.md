@@ -1,5 +1,7 @@
 # AixBOMS data stack — Phase 1
 
+**Project status:** see [ROADMAP.md](ROADMAP.md) for what is implemented, what is next and the decisions taken.
+
 A small, runnable Spring Boot service that tries out the new data stack layers on one use case: **racks
 that contain components and are run by administrators**.
 
