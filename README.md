@@ -172,9 +172,40 @@ Settings live in `dcim-demo/src/main/resources/application.yaml`.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
+| `server.port` | `8080` | HTTP port of the API (see below) |
 | `demo.seed` | `true` | Add demo data when the database is empty |
 | `spring.graphql.graphiql.enabled` | `true` | GraphiQL at `/graphiql` |
 | `PHASE1_DB_URL`, `PHASE1_DB_USER`, `PHASE1_DB_PASSWORD` | local `phase1` database | Database when Docker Compose is off |
+
+### Change the server port
+
+The API runs on port 8080. To use another port, for example 8081:
+
+```bash
+# For one run
+./gradlew bootRun --args='--server.port=8081'
+
+# With an environment variable (Linux / macOS)
+SERVER_PORT=8081 ./gradlew bootRun
+
+# With an environment variable (Windows PowerShell)
+$env:SERVER_PORT="8081"; .\gradlew.bat bootRun
+```
+
+To change it permanently, add this to `dcim-demo/src/main/resources/application.yaml`:
+
+```yaml
+server:
+  port: 8081
+```
+
+`server.port=0` picks a free port; the log line `Tomcat started on port …` shows which one.
+
+With another port, adjust the clients too:
+
+- `requests.http`: first line, `@api = http://localhost:8081/api`
+- Postman: collection variable `baseUrl`, or `npx newman run … --env-var baseUrl=http://localhost:8081`
+- GraphiQL: `http://localhost:8081/graphiql`
 
 **Start from scratch:** stop the app, run `docker compose -f dcim-demo/compose.yaml down -v` to remove the
 database container and its data, and start again.
@@ -235,5 +266,5 @@ relations, missing discriminator values, unknown attribute types, missing view q
 | --- | --- |
 | `Unable to start docker compose` or Docker errors at start-up | Start Docker Desktop, or follow [Without Docker](#without-docker) |
 | Port 15432 already in use | Change the host port in `dcim-demo/compose.yaml` |
-| Port 8080 already in use | `./gradlew bootRun --args='--server.port=8081'` |
+| Port 8080 already in use | Use another port, see [Change the server port](#change-the-server-port) |
 | `Unsupported class file major version` | Gradle is running on an old JDK: point `JAVA_HOME` at JDK 21 |
