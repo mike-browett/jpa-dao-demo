@@ -21,6 +21,7 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 | Several models on one server | ✅ | `datastack-server`, per-model deploy, restart needed |
 | Customisation (Phase 2) | 🔜 | Customer projects, customer attributes, Groovy rules |
 | Model evolution (changes after first deploy) | ⬜ ❓ | Today the generated changelog only creates tables |
+| Feature parity with existing views and aspects (LOVs, exotic types, JSON-backed attributes, metadata) | ⬜ | Needed so every existing view and aspect can be modelled |
 | Inter-model references (relations and view links across microservices) | ⬜ | Shared database, foreign keys across schemas (decided). Models are isolated today |
 | Live deploy (no restart) | ⬜ | |
 | Security / ACL | ⬜ | |
@@ -90,6 +91,34 @@ Status: ✅ done · 🔜 next · ⬜ to do · ❓ needs a decision
 - ⬜ Decimal values in GraphQL come back as strings (`"lengthInches": "11"`)
 - ⬜ Constraint names unique across models, or match by schema (two models with `uq_person_name`)
 - ⬜ Generator as a real Gradle plugin (today a `JavaExec` task in each module)
+
+### Feature parity with existing views and aspects
+Needed so that every existing view and aspect feature can be expressed in the model.
+
+- ⬜ **Localized LOVs** (lists of values): an attribute bound to a LOV; codes stored, labels in the user's
+  language when reading, and code or label accepted when writing
+  - LOV definitions in the model, or read from the existing LOV tables ❓
+  - language from the request (`Accept-Language`, user setting), fallback language when a label is missing
+  - views and GraphQL return code and label; filtering and sorting by label
+  - validation: unknown code → 400 with the allowed values
+- ⬜ **Exotic data types** from the "Attribute Catalog" pull request: CURRENCY, QUANTITY, OBJECT_REFERENCE, ...
+  stored as JSON (e.g. `{ "value": 50, "unit": "KG" }`)
+  - typed in Java (records), in REST DTOs and as GraphQL types; validation per type (known unit, currency code)
+  - filtering and sorting on the inner values (`weight.value > 50`, same unit or converted ❓), with indexes
+    on the JSON paths that are queried
+  - OBJECT_REFERENCE: what it points to (object type + id), resolved in views, kept consistent on delete ❓
+- ⬜ **JSON-backed attributes**: object-specific, dynamic attributes held as a value map in one jsonb attribute,
+  declared per object with `storedAsJsonIn: <attribute>` (as in today's view objects)
+  - today: model-declared JSON attributes go into the root table's fixed `ext` column. To do: any named
+    jsonb attribute, several per object, attributes added without regenerating the entity ❓
+  - same features as real columns: validation, defaults, LOV and exotic types, views, GraphQL, filtering,
+    sorting (and indexes on frequently filtered keys)
+  - the natural home for customer attributes (Phase 2)
+- ⬜ **Metadata retrieval** for generic UIs: an API describing views and graphs at runtime
+  - per object and view: attributes, types (including exotic types), required, ranges, LOVs with labels,
+    read-only, relations and view links, parameters
+  - REST (e.g. `GET /api/<model>/metadata/views/<view>`) and GraphQL; localized labels and descriptions
+  - covers customer attributes and JSON-backed attributes, so a generic form or grid needs no code per object
 
 ### Inter-model references
 Relations and view links that span models (microservices), e.g. a `hogwarts` Wizard linked to a `dcim` Person.
